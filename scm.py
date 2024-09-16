@@ -1,19 +1,14 @@
 from __future__ import annotations  # postponed evaluation of annotations
 
+import itertools
 from abc import ABC, abstractmethod
-from heapq import heappush, heappushpop, heapreplace
-from typing import Callable, Dict, Hashable, Mapping
+from typing import Callable, Dict, Hashable, Mapping, Union
 
+import pandas as pd
 import torch as T
 import torch.multiprocessing as mp
 import torch.nn as nn
 from tqdm import tqdm
-
-from .distribution import Distribution
-
-
-def worker_function(i: int, f: Callable, q: mp.Queue, *args):
-    q.put(f(*args))
 
 
 class SCM(nn.Module):
@@ -25,6 +20,8 @@ class SCM(nn.Module):
         :type f: dict
         :param pu: The distribution over exogenous variables.
         :type pu: class:`scm.distribution.Distribution`
+        :param device: The device on which to store the SCM.
+        :type device: class:`torch.Device`, optional
         """
         super().__init__()
         self.f = f
@@ -39,12 +36,6 @@ class SCM(nn.Module):
     def __iter__(self):
         return iter(self.v)
 
-    def _process(self):
-        while True:
-            f, v, u = iq.get()
-
-        return self.f[k](*args)
-
     def sample(
         self,
         n=None,
@@ -52,11 +43,7 @@ class SCM(nn.Module):
         interventions={},
         select=None,
         return_u=False,
-        n_jobs=None,
-        n_gpus=None,
-        n_threads_per_gpu=None,
         progress_bar=False,
-        cache_size=700,
     ) -> Dict[Hashable, T.Tensor]:
         """
         :param n: The number of samples to draw, default 1.
@@ -64,9 +51,6 @@ class SCM(nn.Module):
         :param u: A tensor containing unobserved values of u.
                   Cannot be specified when `n` is specified.
         :type u: class:`torch.Tensor`, optional
-        :param n_jobs: The number of threads to use in parallelizing
-                       interventional sampling, default None - all cores.
-        :type n_jobs: int
         """
         assert (n is None) != (u is None)
 
@@ -95,12 +79,7 @@ class SCM(nn.Module):
 
         v = {}
 
-        # use an amortized max-heap and min-heap to track which tensors to save
         saved = {}  # cached signature outcomes on cpu/gpu
-        hits = {}  # to track frequency of signature usage
-        heap_contents = set()
-        gpu_heap = []  # min heap: top cache_size signatures for gpu storage
-        cpu_heap = []  # max heap: all other signatures
 
         for subscript, scm in tqdm(
             scms.items(),
@@ -108,12 +87,10 @@ class SCM(nn.Module):
             disable=not progress_bar,
             leave=False,
         ):
-            vt = {}
+            # a variable's signature is a tuple of hashes of the functions topologically prior to it
             signature = ()
+            vt = {}
             diff = 0
-            # assert all(v.device == self.device_param.device for k, v in ut.items()), {
-            #     k: v.device for k, v in ut.items()
-            # }
             for vi in scm.v:
                 signature += (hash(scm.f[vi]),)
                 diff += hash(scm.f[vi]) != hash(self.f[vi])
@@ -193,3 +170,235 @@ class AtomicIntervention(Intervention):
 
     def __hash__(self):
         return hash(type(self).__name__ + ":" + tuple(sorted(self.x.items())))
+
+
+class Distribution(nn.Module):
+    def __init__(self, u):
+        super().__init__()
+        self.u = list(u)
+        self.device_param = nn.Parameter(T.empty(0))
+
+    def __iter__(self):
+        return iter(self.u)
+
+    def sample(self, n=1, exclude=set()):
+        raise NotImplementedError()
+
+    def forward(self, n=1):
+        raise self.sample(n=n)
+
+
+class JointDistribution(Distribution):
+    def __init__(self, *distributions):
+        us = set()
+        for distribution in distributions:
+            assert not us.intersection(distribution)
+            us.update(distribution)
+
+        super().__init__([u for distribution in distributions for u in distribution])
+        self.distributions = nn.ModuleList(
+            sum(
+                (
+                    list(d.distributions) if isinstance(d, JointDistribution) else [d]
+                    for d in distributions
+                ),
+                [],
+            ),
+        )
+
+    def sample(self, n=1, exclude=set()):
+        if not (set(self.u) - set(exclude)):
+            return {}
+        return {
+            k: v
+            for distribution in self.distributions
+            for k, v in distribution.sample(n, exclude=exclude).items()
+        }
+
+
+class NormalDistribution(Distribution):
+    def __init__(self, sizes):
+        super().__init__(sizes)
+        self.sizes = sizes
+
+    def sample(self, n=1, exclude=set()):
+        if not (set(self.u) - set(exclude)):
+            return {}
+        return {
+            name: T.randn(n, dims, device=self.device_param.device)
+            for name, dims in self.sizes.items()
+            if name not in exclude
+        }
+
+
+class BernoulliDistribution(Distribution):
+    def __init__(self, sizes):
+        super().__init__(sizes)
+        self.sizes = nn.ParameterDict(
+            {
+                name: (
+                    nn.Parameter(T.tensor([p]))
+                    if len(T.tensor(p).shape) == 0
+                    else T.tensor(p)
+                )
+                for name, p in sizes.items()
+            }
+        )
+
+    def sample(self, n=1, exclude=set()):
+
+        if not (set(self.u) - set(exclude)):
+            return {}
+
+        return {
+            name: T.bernoulli(
+                p.expand(n, len(p)),
+            ).bool()
+            for name, p in self.sizes.items()
+            if name not in exclude
+        }
+
+
+class UniformDistribution(Distribution):
+    def __init__(self, sizes):
+        super().__init__(sizes)
+        self.sizes = sizes
+
+    def sample(self, n=1, exclude=set()):
+
+        if not (set(self.u) - set(exclude)):
+            return {}
+
+        return {
+            name: T.rand(n, dims, device=self.device_param.device)
+            for name, dims in self.sizes.items()
+            if name not in exclude
+        }
+
+
+class PoissonDistribution(Distribution):
+    def __init__(self, name, rates):
+        super().__init__([name])
+
+        rates = T.tensor(rates)
+
+        assert len(rates.shape) <= 1
+
+        if len(rates.shape) == 0:
+            rates = T.tensor([rates])
+
+        self.name = name
+        self.rates = rates
+
+    def sample(self, n=1, exclude=set()):
+        if not (set(self.u) - set(exclude)):
+            return {}
+
+        return (
+            {
+                self.name: T.poisson(self.rates.expand(n, len(self.rates))).to(
+                    self.device_param.device
+                )
+            }
+            if self.name not in exclude
+            else {}
+        )
+
+
+class CategoricalDistribution(Distribution):
+    def __init__(
+        self,
+        p: Dict[Hashable, Union[float, T.Tensor]] = {},
+        logits: Dict[Hashable, Union[float, T.Tensor]] = {},
+        sizes: Dict[Hashable, T.Size] = {},
+        default_size: int = 1,
+        grad: bool = False,
+    ):
+        """If p is a float between zero and one, the distribution will be binary."""
+
+        assert p or logits or sizes
+        assert not (p and logits)
+        assert all(not isinstance(p, float) or p <= 1 for k, p in p.items())
+
+        self.sizes = {
+            k: sizes.get(k, default_size) for k in set(sizes).union(p).union(logits)
+        }
+        super().__init__(self.sizes)
+
+        self.default_size = default_size
+        if p:
+            self.logits = {
+                k: (
+                    T.zeros(sizes[k], dtype=float)
+                    if k not in p
+                    else (
+                        T.tensor([1 - p[k], p[k]]).log()
+                        if isinstance(p[k], float) and p[k]
+                        else (
+                            p[k].log()
+                            if isinstance(p[k], T.Tensor)
+                            else T.tensor(p[k]).log()
+                        )
+                    )
+                )
+                for k in self.sizes
+            }
+        else:
+            self.logits = {
+                k: T.zeros(2, dtype=float) if k not in logits else logits[k]
+                for k in self.sizes
+            }
+        self.grad = grad
+
+        if grad:
+            self.logits = nn.ParameterDict(
+                {k: nn.Parameter(v) for k, v in self.logits.items()}
+            )
+
+    def sample(self, n=1, exclude=set()):
+        if not (set(self.u) - set(exclude)):
+            return {}
+
+        return {
+            k: T.distributions.Categorical(logits=self.logits[k])
+            .sample((n, self.sizes.get(k, self.default_size)))
+            .type_as(self.device_param)
+            .long()
+            for k in self.sizes
+            if k not in exclude
+        }
+
+
+def get_probability_table(m: SCM, u=False, v=True):
+    """
+    Returns a probability table for the SCM.
+    Only for discrete SCMs with a Categorical P(U).
+
+    :param m: The SCM.
+    :param u: Whether to include the U variables.
+    :param v: Whether to include the V variables.
+    """
+    assert isinstance(m.pu, CategoricalDistribution)
+    assert "probability" not in m.v
+    assert u or v
+
+    lp = {k: t - t.logsumexp(0) for k, t in m.pu.logits.items()}
+    domains = {k: len(t) for k, t in lp.items()}
+    rows = list(itertools.product(*[range(domains[k]) for k in m.pu]))
+    obs = m.sample(u={k: T.tensor([r[i] for r in rows]) for i, k in enumerate(m.pu)})
+    prob = [sum(lp[k][i] for k, i in zip(m.pu, r)).exp().item() for r in rows]
+
+    u_list = list("u_%s" % u for u in m.pu)
+    df = pd.DataFrame(
+        data=[
+            r + tuple(obs[k][i].item() for k in m.v) + (prob[i],)
+            for i, r in enumerate(rows)
+        ],
+        columns=u_list + list(m.v) + ["probability"],
+    )
+    if u and v:
+        return df
+    elif u:
+        return df.groupby(u_list).probability.sum().to_frame().reset_index()
+    elif v:
+        return df.groupby(list(m.v)).probability.sum().to_frame().reset_index()
