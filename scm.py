@@ -69,3 +69,24 @@ class SymbolicSCM:
             )
 
         return pd.DataFrame(records).groupby(symbols).probability.sum().reset_index()
+
+    def query(self, x, given={}):
+        assert all(k in self.v for k in x), x
+        assert all(k in self.v for k in given), given
+
+        # could be relaxed
+        assert set(x).isdisjoint(given), (x, given)
+
+        if given:
+            return self.query({**x, **given}) / self.query(given)
+
+        pt = self.get_probability_table()
+        query = " and ".join(f"{str(k)} == {str(x[k])}" for k in x)
+        return pt.query(query).probability.sum()
+
+    def do(self, x):
+        assert all(k in self.v for k in x), x
+        return SymbolicSCM(
+            f={k: sp.sympify(x[k]) if k in x else v for k, v in self.f.items()},
+            pu=self.pu,
+        )
