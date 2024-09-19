@@ -147,7 +147,7 @@ class SymbolicSCM:
                 "$\\begin{cases}"
                 f"\mathbf V &= \\{{{v}\\}} \\\\"
                 f"\mathbf U &= \\{{{u}\\}} \\\\"
-                f"\mathbf F &= \\begin{{cases}}"
+                f"F &= \\begin{{cases}}"
                 f"{f}"
                 "\\end{cases} \\\\"
                 f"P(\mathbf U) &= \\begin{{cases}}"
