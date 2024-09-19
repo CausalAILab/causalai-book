@@ -1,2 +1,2 @@
-# causality
-A basic causal inference toolkit.
+# causalai-book
+A companion for the Causal Artificial Intelligence book.
