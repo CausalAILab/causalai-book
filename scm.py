@@ -100,7 +100,7 @@ class SymbolicSCM:
 
         # display precision
         self.precision = precision
-
+        self._interventions = {}
         self._counterfactuals = {k: self for k in self.v}
 
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
@@ -166,14 +166,23 @@ class SymbolicSCM:
                 symbols = self.u + self.v
             else:
                 symbols = self.v
+        assert all(
+            (k in self._counterfactuals) != (k in self.pu) for k in symbols
+        ), symbols
 
         settings = [[(k, i) for i in v] for k, v in self.pu_domains.items()]
         records = []
         for u in map(dict, itertools.product(*settings)):
+            record = {}
+            for scm in set(
+                self._counterfactuals[k] for k in symbols if k not in self.pu
+            ):
+                record.update(scm._evaluate(u))
+
             records.append(
                 {
                     k: hash(v) if v in [sp.false, sp.true] else int(v)
-                    for k, v in self._evaluate(u).items()
+                    for k, v in record.items()
                 }
             )
             records[-1]["probability"] = math.exp(
@@ -235,8 +244,11 @@ class SymbolicSCM:
             - All keys in `given` are in `self.syn`.
             - The keys in `x` and `given` are disjoint.
         """
-        assert all(k in self.syn for k in x), x
-        assert all(k in self.syn for k in given), given
+        assert all(k in self.syn or k in self._counterfactuals for k in x), (
+            x,
+            self.syn,
+            self._counterfactuals,
+        )
 
         # could be relaxed
         assert set(x).isdisjoint(given), (x, given)
@@ -253,9 +265,9 @@ class SymbolicSCM:
         if given:
             return self.query({**x, **given}) / self.query(given)
 
-        x = {self.syn[k]: v for k, v in x.items()}
+        x = {self.syn.get(k, k): v for k, v in x.items()}
 
-        pt = self.get_probability_table()
+        pt = self.get_probability_table(symbols=list(x))
         query = " and ".join(f"`{str(k)}` == {str(x[k])}" for k in x)
         return pt.query(query).probability.sum()
 
@@ -280,10 +292,15 @@ class SymbolicSCM:
             If any of the keys in `x` are not present in the set of variables `self.v`.
         """
 
+        key = hash(tuple(sorted(x.items())))
+        if key in self._interventions:
+            return self._interventions[key]
+
         assert all(k in self.v for k in x), x
         subscript = ",".join(f"{k}={x[k]}" for k in x)
         vs = {k: sp.Symbol(f"{{{k}}}_{{{subscript}}}") for k in self.v}
-        return SymbolicSCM(
+
+        self._interventions[key] = scm = SymbolicSCM(
             f={
                 vs[k]: (sp.sympify(x[k]) if k in x else v).subs(vs)
                 for k, v in self.f.items()
@@ -291,6 +308,15 @@ class SymbolicSCM:
             pu=self.pu,
             syn={**self.syn, **vs},
         )
+
+        ctfs = {k: scm for k in scm.v}
+        assert set(ctfs).isdisjoint(self._counterfactuals), (
+            ctfs,
+            self._counterfactuals,
+        )
+        self._counterfactuals.update(ctfs)
+
+        return scm
 
     def _repr_mimebundle_(self, **kwargs):
         v = ",".join(map(str, self.v))
