@@ -1,4 +1,6 @@
 from collections import deque
+from graphviz import Source
+
 
 class CausalDiagram:
 
@@ -14,6 +16,8 @@ class CausalDiagram:
 
         self.ne = {v: set() for v in self.v}
         self._get_neighbors()
+
+        self.desc = {v: self._get_descendants(v) for v in self.v}
 
         self._sort()
 
@@ -31,6 +35,18 @@ class CausalDiagram:
         for u, v in self.be:
             self.ne[u].add(v)
             self.ne[v].add(u)
+
+    def _get_descendants(self, v):
+        descendants = set()
+
+        def dfs(current):
+            for child in self.ch[current]:
+                if child not in descendants:
+                    descendants.add(child)
+                    dfs(child)
+
+        dfs(v)
+        return descendants
 
     def _sort(self):
         # Topological sort using Kahn's algorithm
@@ -61,10 +77,13 @@ class CausalDiagram:
         )
         return factorization
 
-    def path(self, X, Y):        
+    def path(self, X, Y):
+
+        paths = []
+
         def dfs(current, target, visited, path):
             if current == target:
-                print(path)
+                paths.append(path)
                 return
 
             visited.add(current)
@@ -76,11 +95,38 @@ class CausalDiagram:
                 [(n, "<->") for n in self.ne[current]]  # bidirected edge <->
             ):
                 if neighbor not in visited:
-                    dfs(neighbor, target, visited, path + f" {edge} {neighbor}")
+                    dfs(neighbor, target, visited, path + [edge, neighbor])
 
             visited.remove(current)
 
-        dfs(X, Y, set(), f"{X}")
+        dfs(X, Y, set(), [X])
+
+        return paths
+    
+    def d_separation_paths(self, X, Y, Z):
+
+        blocked_paths = []
+        unblocked_paths = []
+
+        def is_blocked(path, Z):
+            for i in range(2, len(path)-2, 2):
+                collider = (path[i-1] in ["->", "<->"]) and (path[i+1] in ["<->", "<-"])
+                if not collider and path[i] in Z:
+                    return True
+                elif collider and (path[i] not in Z) and (Z.intersection(self.desc[path[i]]) == set()):
+                    return True
+            return False
+
+        for x in X:
+            for y in Y:
+                paths = self.path(x, y)
+                for path in paths:
+                    if is_blocked(path, Z):
+                        blocked_paths.append(path)
+                    else:
+                        unblocked_paths.append(path)
+        
+        return blocked_paths, unblocked_paths
 
     def ancestors(self, nodes):
 
@@ -95,6 +141,7 @@ class CausalDiagram:
         return ancestors
 
     def d_separation_check(self, X, Y, Z, verbose=False):
+        # Algorithm 1 in the book
 
         # Step 1: Let A = An(X, Y, Z)
         A = self.ancestors(X | Y | Z)
@@ -125,12 +172,106 @@ class CausalDiagram:
         # Step 5: DFS to check reachability from X to Y
         visited = set()
 
-        def dfs(node):
+        
+        def dfs(node, path):
             if node in visited:
-                return False
+                return None
             if node in Y:
-                return True
+                return path + [node]  # Return the path when Y is found
             visited.add(node)
-            return any(dfs(neighbor) for neighbor in subgraph[node])
+            for neighbor in subgraph[node]:
+                result = dfs(neighbor, path + [node])
+                if result:
+                    return result
+            return None
 
-        return not any(dfs(node) for node in X)
+        for node in X:
+            path = dfs(node, [])
+            if path:
+                return False, path, subgraph  # Return the path if found
+
+        return True, None, subgraph
+
+
+def parse_path_to_edges(path):
+
+    edges = set()
+
+    i = 0
+    while i < len(path) - 2:
+        u = path[i]
+        edge = path[i+1]
+        v = path[i+2]
+
+        if edge == '->':  # Directed edge u -> v
+            edges.add((u, v, 'directed'))
+        elif edge == '<-':  # Directed edge v -> u (reverse direction)
+            edges.add((v, u, 'directed'))
+        elif edge == '<->':  # Bidirected edge u <-> v
+            edges.add((u, v, 'bidirected'))
+        
+        i += 2
+
+    return edges
+
+def directed_graph_to_dot(graph, name="Causal Diagram", Z=set(), paths=[]):
+        
+        dot_text = f"digraph {name}" + " {\n"
+
+        dot_text += " rankdir=LR;\n"
+
+        # Nodes
+        dot_text += " node [shape=circle, fontsize=16, style=filled];\n"
+        for node in graph.v:
+            color = "#add8e6" if node in Z else "white"
+            dot_text += f' {node} [fillcolor="{color}"];\n'
+
+        edges = set()
+        for path in paths:
+            edges |= parse_path_to_edges(path)
+
+        # Adding directed edges to DOT (unblocked paths in red)
+        for u, v in graph.de:
+            color = "red" if (u, v, 'directed') in edges else "black"
+            dot_text += f' {u} -> {v} [color="{color}"];\n'
+
+        # Adding bidirected edges to DOT (unblocked paths in red)
+        for u, v in graph.be:
+            color = "red" if (u, v, 'bidirected') in edges else "black"
+            dot_text += f' {u} -> {v} [dir=both, style=dashed, color="{color}"];\n'
+
+        dot_text += "}\n"
+        return dot_text
+
+def plot_causal_diagram(graph, name="Causal Diagram", Z=set(), paths=[]):
+    dot_text = directed_graph_to_dot(graph, name, Z, paths)
+    return Source(dot_text)
+
+def undirected_graph_to_dot(graph, name="Causal Diagram", path=[]):
+
+    dot_text = f"graph {name}" + " {\n"
+
+    dot_text += " rankdir=LR;\n"
+
+    dot_text += " node [shape=circle, fontsize=16, style=filled, fillcolor=white];\n"
+
+    path = [(path[i], path[i+1]) for i in range(0, len(path)-1)]
+    
+    # Iterate over the graph dictionary and add edges to the DOT representation
+    added_edges = set()  # To ensure edges are not duplicated
+    for node, neighbors in graph.items():
+        for neighbor in neighbors:
+            if (neighbor, node) not in added_edges:
+                color = "red" if (node, neighbor) in path or (neighbor, node) in path else "black"
+                dot_text += f' {node} -- {neighbor} [color="{color}"];\n'
+                added_edges.add((node, neighbor))
+                added_edges.add((neighbor, node))
+    
+    # Close the DOT text
+    dot_text += "}\n"
+    
+    return dot_text
+
+def plot_undirected_graph(graph, name="Causal Diagram", path=[]):
+    dot_text = undirected_graph_to_dot(graph, name, path)
+    return Source(dot_text)
