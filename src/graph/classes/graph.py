@@ -353,25 +353,27 @@ class Graph():
         return ccsNodes
 
 
-    def print(self):
+    def __str__(self):
+        strGraph = ''
         if len(self.nodes) > 0:
-            print('<Nodes (' + str(len(self.nodes)) + ')>')
+            strGraph += '<Nodes (' + str(len(self.nodes)) + ')>\n'
         else:
-            print('<Nodes (none)>')
+            strGraph += '<Nodes (none)>\n'
 
         nodeNames = list(map(lambda n: n['name'], self.nodes))
 
-        print('\n'.join(nodeNames))
+        strGraph += '\n'.join(nodeNames) + '\n'
 
         if len(self.edges) > 0:
-            print('\n<Edges (' + str(len(self.edges)) + ')>')
+            strGraph += '\n<Edges (' + str(len(self.edges)) + ')>\n'
         else:
-            print('\n<Edges (none)>')
+            strGraph += '\n<Edges (none)>\n'
 
         edgeList = list(map(lambda e: e['from_'] + ' ' + edgeTypeMap[e['type_']].shortId  + ' ' + e['to_'], self.edges))
 
-        print('\n'.join(edgeList))
+        strGraph += '\n'.join(edgeList) + '\n'
 
+        return strGraph
 
     def __addNode(self, node):
         self.nx.add_node(node['name'], label = node['label'], type_ = node['type_'], metadata = node['metadata'])
