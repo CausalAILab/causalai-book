@@ -144,6 +144,9 @@ class BackdoorEngine(BaseEngine):
         if not conditional:
             adjustment = BackdoorAdjustment.findAdjustment(
                 graph, x, y, [], self.P)
+        else:
+            adjustment = BackdoorAdjustment.findAdjustment(
+                graph, x, y, z, self.P)
 
         if adjustment is None:
             return self.createFailureMessage(None)

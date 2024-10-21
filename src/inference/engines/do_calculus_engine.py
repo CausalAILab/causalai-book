@@ -200,6 +200,60 @@ class DoCalculusEngine(BaseEngine):
 
             return error
 
+    # Try rule 2 or rule 3 to check if the effect is identifiable.
+    # Node[], Node[], Node[], Expression, Graph
+    # Expression
+
+    def trySimpleDerivation(self, y, x, z, P, G):
+        xNAnZ = su.difference(x, gu.ancestors(z, G), 'name')
+
+        if DSeparation.test(gu.transform(G, xNAnZ, None), x, y, z):
+            result = self.createPExpression(y, z)
+
+            trace = Trace()
+            trace.query = result
+            trace.result = result
+            trace.algorithmInfo = {
+                'algName': alg_name, 'line': docalc_rule3, 'args': {
+                    'indeps': [
+                        eu.create('indep', [x, y, z, eu.create(
+                            'concat', ['G_{\\overline{', x, '}}'])])
+                    ]
+                }
+            }
+            trace.subgraph = {'V': su.union(gu.nodeToList(
+                G.nodes), self.latentNodeNames), 'over': gu.nodeToList(x)}
+
+            self.pushTrace(trace)
+            self.popTrace()
+
+            return result
+
+        if DSeparation.test(gu.transform(G, None, x), x, y, z):
+            result = self.createPExpression(y, su.union(x, z, 'name'))
+
+            trace = Trace()
+            trace.query = result
+            trace.result = result
+            trace.algorithmInfo = {
+                'algName': alg_name, 'line': docalc_rule2, 'args': {
+                    'indeps': [
+                        eu.create('indep', [x, y, z, eu.create(
+                            'concat', ['G_{\\underline{', x, '}}'])])
+                    ]
+                }
+            }
+            trace.subgraph = {'V': su.union(gu.nodeToList(
+                G.nodes), self.latentNodeNames), 'under': gu.nodeToList(x)}
+
+            self.pushTrace(trace)
+            self.popTrace()
+
+            return result
+
+        return None
+
+
     # Node[], Node[], Node[], Expression, Graph
     # Expression
 
@@ -444,7 +498,7 @@ class DoCalculusEngine(BaseEngine):
     #  * @returns The derivation steps required to compute Q[C] from Q[T]
     #  */
 
-    def derive(self, C, T, G, tryTransport=True, domain=0):
+    def derive(self, C, T, G, tryTransport = True):
         if su.equals(C, T, 'name'):
             if tryTransport:
                 return self.tryTransport(C, T, G)
@@ -465,18 +519,19 @@ class DoCalculusEngine(BaseEngine):
             else:
                 return 0
 
-        T = sorted(T, key=functools.cmp_to_key(sortByAncestry))
+        T = sorted(T, key = functools.cmp_to_key(sortByAncestry))
 
         A = su.intersection(T, gu.ancestors(C, G), 'name')
 
         # sum out T \ A (non-ancestors of C)
         if not su.equals(A, T, 'name'):
-            order = self.derive(C, A, gu.subgraph(G, A), tryTransport, domain)
+            order = self.derive(C, A, gu.subgraph(G, A), tryTransport)
+
             if order is None:
                 return []
-
-            order.append({'T': T, 'op': op_sum_anc})
-
+            
+            order.append({ 'T': T, 'op': op_sum_anc })
+            
             return order
         else:
             # c-component decomposition
@@ -492,69 +547,16 @@ class DoCalculusEngine(BaseEngine):
                 if su.isSubset(C, Tip, 'name'):
                     # the following intersection will assign the same elements
                     # to Tip but in the order defined by T
-                    Tip = su.intersection(T, Tip, 'name')
-                    order = self.derive(C, Tip, gu.subgraph(
-                        G, Tip), tryTransport, domain)
-
+                    Tip_cf = su.intersection(T, Tip, 'name')
+                    order = self.derive(C, Tip_cf, gu.subgraph(G, Tip_cf), tryTransport)
+                    
                     if order is None:
                         return []
-
-                    order.append({'T': T, 'op': op_c_decomp})
+                    
+                    order.append({ 'T': T, 'op': op_c_decomp })
 
                     return order
 
-    # Try rule 2 or rule 3 to check if the effect is identifiable.
-    # Node[], Node[], Node[], Expression, Graph
-    # Expression
-
-    def trySimpleDerivation(self, y, x, z, P, G):
-        xNAnZ = su.difference(x, gu.ancestors(z, G), 'name')
-
-        if DSeparation.test(gu.transform(G, xNAnZ, None), x, y, z):
-            result = self.createPExpression(y, z)
-
-            trace = Trace()
-            trace.query = result
-            trace.result = result
-            trace.algorithmInfo = {
-                'algName': alg_name, 'line': docalc_rule3, 'args': {
-                    'indeps': [
-                        eu.create('indep', [x, y, z, eu.create(
-                            'concat', ['G_{\\overline{', x, '}}'])])
-                    ]
-                }
-            }
-            trace.subgraph = {'V': su.union(gu.nodeToList(
-                G.nodes), self.latentNodeNames), 'over': gu.nodeToList(x)}
-
-            self.pushTrace(trace)
-            self.popTrace()
-
-            return result
-
-        if DSeparation.test(gu.transform(G, None, x), x, y, z):
-            result = self.createPExpression(y, su.union(x, z, 'name'))
-
-            trace = Trace()
-            trace.query = result
-            trace.result = result
-            trace.algorithmInfo = {
-                'algName': alg_name, 'line': docalc_rule2, 'args': {
-                    'indeps': [
-                        eu.create('indep', [x, y, z, eu.create(
-                            'concat', ['G_{\\underline{', x, '}}'])])
-                    ]
-                }
-            }
-            trace.subgraph = {'V': su.union(gu.nodeToList(
-                G.nodes), self.latentNodeNames), 'under': gu.nodeToList(x)}
-
-            self.pushTrace(trace)
-            self.popTrace()
-
-            return result
-
-        return None
 
     # Node[], Node[], Graph
     # DerivationStep[]
@@ -566,16 +568,6 @@ class DoCalculusEngine(BaseEngine):
         X = su.difference(T, C, 'name')
 
         for i in range(len(domains)):
-            Si = TransportabilityUtils.getSelectionNodesFor(
-                self.selectionDiagram, domains[i])
-            GminusX = gu.subgraph(self.selectionDiagram,
-                                  su.union(C, Si, 'name'))
-            isSiIndepY = su.isEmpty(Si) or DSeparation.test(
-                GminusX, su.intersection(self.selectionDiagram.nodes, C, 'name'), Si, [])
-
-            if not isSiIndepY:
-                continue
-
             Zcollection = Zs[i]
 
             for Z in Zcollection:
@@ -586,20 +578,18 @@ class DoCalculusEngine(BaseEngine):
 
                 try:
                     Tp = su.difference(T, Z, 'name')
-                    GminusZcapX = gu.subgraph(self.selectionDiagram, su.difference(
-                        self.selectionDiagram.nodes, Z, 'name'))
+                    GminusZcapX = gu.subgraph(self.originalGraph, su.difference(self.originalGraph.nodes, Z, 'name'))
                     newT = gu.topoSort(GminusZcapX, True)
                     newT = gu.filterBasicNodes(newT)
-                    order = self.derive(C, newT, GminusZcapX, False, i)
-
+                    order = self.derive(C, newT, GminusZcapX, False)
+                    
                     if order is not None:
-                        E.append({'T': Tp, 'domain': i, 'experiments': Z,
-                                 'steps': list(reversed(order))})
+                        E.append({ 'T': Tp, 'domain': 0, 'experiments': Z, 'steps': list(reversed(order)) })
                 except:
                     pass
 
         if len(E) > 0:
-            return [{'T': T, 'op': op_transp, 'transportabilityInfo': E}]
+            return [{ 'T': T, 'op': op_transp, 'transportabilityInfo': E }]
 
         raise self.createFailureMessage(G)
 

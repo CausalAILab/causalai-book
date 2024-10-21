@@ -62,3 +62,10 @@ def listDSeparationPaths(fileContent):
     separatedPaths = DSeparation.findDSeparatedPaths(G, X, Y, Z)
 
     return {'G':G, 'connectedPaths': connectedPaths, 'separatedPaths': separatedPaths}
+
+
+def parseGraph(fileContent):
+    parser = InputParser()
+    parser.sections = [getNodesSection(), getEdgesSection()]
+    parsedData = parser.parse(fileContent)
+    return parsedData['graph']
