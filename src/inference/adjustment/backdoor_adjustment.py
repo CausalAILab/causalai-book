@@ -74,7 +74,7 @@ class BackdoorAdjustment():
             else:
                 expression = pu.sumOver(eu.create('product', [
                     firstTerm,
-                    pu.conditional(P, gu.nodesToVariables(z), [])
+                    pu.conditional(P, gu.nodesToVariables(z), w)
                 ]), z)
 
             return {
