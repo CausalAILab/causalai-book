@@ -64,3 +64,54 @@ def display_inspector_result(result, latex = False):
             print('Result:', eu.write(eu.create('=', [result.expression, result.inference])))
         else:
             print('Result:', eu.write(eu.create('!=', [result.expression, result.inference])))
+
+
+def do_calculus_derivation(trace):
+
+    from IPython.display import display, Latex
+
+    op_dict = {
+        0: "base",
+        1: "rule 3",
+        2: "summation over variable",
+        3: "factorize",
+        4: "rule 2",
+        5: "conditional probability",
+        6: "c-component form",
+        7: "subgoal",
+        8: "compute numerator",
+        9: "compute denominator",
+        10: "compute factor",
+        11: "transport",
+        12: "same domain experiment",
+        13: "c-component",
+
+        20: "factor fraction",
+        21: "factor terminal",
+        22: "factor subgoal",
+
+        23: "sum ancenstors",
+        24: "c-decomposition",
+        25: "transportation"
+    }
+
+    def print_step(trace, level = 1):
+
+        if trace.query is None:
+            return
+
+        if level == 0:
+            display(Latex(f"${eu.write(trace.query)}$ ..............({op_dict[trace.algorithmInfo['line']]})"))
+        else:
+            display(Latex(f"$={eu.write(trace.query)}$ ..............({op_dict[trace.algorithmInfo['line']]})"))
+
+        if trace.children is not None:
+            if len(trace.children) > 1:
+                for child in trace.children:
+                    print_step(child, 0)
+            else:
+                print_step(trace.children[0])
+        
+        return
+
+    print_step(trace, 0)

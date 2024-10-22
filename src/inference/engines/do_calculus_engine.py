@@ -22,29 +22,28 @@ from src.inference.utils.transportability_utils import TransportabilityUtils
 
 alg_name = 'do-calc'
 
-op_sum_anc = 1
-op_c_decomp = 2
-op_transp = 3
-
 docalc_base = 0
 docalc_rule3 = 1
-docalc_rule2 = 4
-# docalc_rule3_old = 5
 docalc_sum_over = 2
 docalc_factorize = 3
-docalc_cond_prob = 6
-docalc_c_comp_form = 7
-docalc_subgoal = 8
-docalc_comp_num = 9
-docalc_comp_den = 10
-docalc_comp_factor = 11
-docalc_transport = 12
-docalc_same_domain_exp = 13
-docalc_c_comp = 14
+docalc_rule2 = 4
+docalc_cond_prob = 5
+docalc_c_comp_form = 6
+docalc_subgoal = 7
+docalc_comp_num = 8
+docalc_comp_den = 9
+docalc_comp_factor = 10
+docalc_transport = 11
+docalc_same_domain_exp = 12
+docalc_c_comp = 13
 
-factor_fraction = 0
-factor_terminal = 1
-factor_subgoal = 2
+factor_fraction = 20
+factor_terminal = 21
+factor_subgoal = 22
+
+op_sum_anc = 23
+op_c_decomp = 24
+op_transp = 25
 
 do_calc_defaultConfig = {
     'populations': [targetPopulation],
@@ -238,6 +237,7 @@ class DoCalculusEngine(BaseEngine):
             return result
 
         if DSeparation.test(gu.transform(G, None, x), x, y, z):
+
             result = self.createPExpression(y, su.union(x, z, 'name'))
 
             trace = Trace()
@@ -1053,8 +1053,8 @@ class DoCalculusEngine(BaseEngine):
                 overlineVars = su.union(
                     su.union(intervCond, removed, 'name'), experiments, 'name')
                 expFactors = factors + previousFactors[i:]
-                expFactors[i - 1] = eu.create('color',
-                                              ['#007bff', expFactors[i - 1]])
+                # expFactors[i - 1] = eu.create('color',
+                                            #   ['#007bff', expFactors[i - 1]])
 
                 trace = Trace()
                 trace.query = eu.create('product', expFactors)
@@ -1108,11 +1108,12 @@ class DoCalculusEngine(BaseEngine):
                 T[0: interv[0]], su.union(W, experiments, 'name'), 'name')))
 
             if not eu.isEmpty(r2Op):
+
                 intervCond = V[0: V.index(T[interv[0]])]
                 overlineVars = su.union(su.difference(
                     intervCond, T, 'name'), experiments, 'name')
                 expFactors = factors + previousFactors[i + 1:]
-                expFactors[i] = eu.create('color', ['#007bff', expFactors[i]])
+                # expFactors[i] = eu.create('color', ['#007bff', expFactors[i]])
 
                 trace = Trace()
                 trace.query = eu.create('product', expFactors)
