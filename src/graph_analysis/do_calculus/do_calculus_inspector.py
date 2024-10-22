@@ -13,7 +13,7 @@ class DoCalculusInspector():
 
     # DoCalculusInspectionQuery, Graph
     # DoCalculusInspectionResult
-    def test(self, query, graph):
+    def test(self, query, graph, return_graph = False):
 
         if not query or not graph:
             return None
@@ -63,6 +63,7 @@ class DoCalculusInspector():
             
             if not result.applicable:
                 result.violating_paths = DSeparation.findDConnectedPaths(transformedGraph, P.Y, P.Z, XW)
+
         elif rule == 3:
             # delete the do()
             # Z is interventional
@@ -84,6 +85,9 @@ class DoCalculusInspector():
             if not result.applicable:
                 result.violating_paths = DSeparation.findDConnectedPaths(transformedGraph, P.Y, P.Z, XW)
 
+        if return_graph:
+            return result, transformedGraph
+        
         return result
 
     
