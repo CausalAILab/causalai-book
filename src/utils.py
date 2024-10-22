@@ -133,7 +133,7 @@ def do_calculus_derivation(trace):
         if trace.query is None:
             return
 
-        if level == 0:
+        if level == 0 or op_dict[trace.algorithmInfo["line"]] == "subgoal":
             strings.append(
                 f"{eu.write(trace.query)} ...................... \\text{{({op_dict[trace.algorithmInfo['line']]})}}"
             )
@@ -154,4 +154,4 @@ def do_calculus_derivation(trace):
     print_step(trace, 0)
 
     for string in strings:
-        display(Latex(string))
+        display(Latex(f"${string}$"))
