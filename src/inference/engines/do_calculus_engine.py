@@ -1252,7 +1252,7 @@ class DoCalculusEngine(BaseEngine):
         failureExp = [
             queryExpression,
             eu.create('text', [' is not transportable from ' if len(
-                self.populations) > 1 else ' is not identifiable from '])
+                self.populations) > 1 else ' is not identifiable.']) # TODO: fix the bug 'from'
         ]
 
         return Failure(eu.create('concat', failureExp), witness)
