@@ -2,7 +2,6 @@ from typing import List, Union
 
 from src.inference.classes.variable import Variable
 
-
 class Expression():
 
     type_: str

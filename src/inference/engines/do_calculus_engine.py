@@ -46,6 +46,17 @@ factor_fraction = 0
 factor_terminal = 1
 factor_subgoal = 2
 
+do_calc_defaultConfig = {
+    'populations': [targetPopulation],
+    'experiments': [[[]]],
+    'experimentSpecs': {'*': [[]]}, 
+    'observationSpecs': {}, 
+    'interventions': [], 
+    'interventionSpecs': {}, 
+    'externalData': [], 
+    'renameReinstantiatedVariables': True, 
+    'simplifyWhenPossible': True
+}
 
 class DoCalculusEngine(BaseEngine):
 
@@ -96,12 +107,9 @@ class DoCalculusEngine(BaseEngine):
     # Expression | Failure<Any>
 
     def compute(self, query, G, config=None):
-        self.populations = config['populations'] if config is not None and 'populations' in config else [
-            targetPopulation]
-        self.experiments = config['experiments'] if config is not None and 'experiments' in config else [
-        ]
-        self.experimentSpecs = config['experimentSpecs'] if config is not None and 'experimentSpecs' in config else {
-        }
+        self.populations = config['populations'] if config is not None and 'populations' in config else [targetPopulation]
+        self.experiments = config['experiments'] if config is not None and 'experiments' in config else [[[]]]
+        self.experimentSpecs = config['experimentSpecs'] if config is not None and 'experimentSpecs' in config else {'*': [[]]}
 
         self.clearTrace()
 
