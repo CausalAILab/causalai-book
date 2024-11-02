@@ -292,7 +292,7 @@ class SymbolicSCM:
             If any of the keys in `x` are not present in the set of variables `self.v`.
         """
 
-        key = hash(tuple(sorted(x.items())))
+        key = hash(tuple(sorted(x.items(), key=lambda t: (str(t[0]), t[1]))))
         if key in self._interventions:
             return self._interventions[key]
 
