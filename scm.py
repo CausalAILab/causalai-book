@@ -9,7 +9,46 @@ import sympy as sp
 from IPython.display import Latex
 
 
+# Updated syn dictionary to be a two-way dictionary
+# Implemented SymbolContainer class to allow for attribute access to symbols
+# Updated the do method to allow for counterfactuals and created assertion to check that counterfactuals are within the domain of the key
+# TODO: Update the query method to solve for counterfactuals
+
+
 class SymbolicSCM:
+
+    class SymbolContainer:
+        def __init__(self, symbols: List[sp.Symbol], syn: Dict[sp.Symbol, sp.Symbol]):
+            self.symbol_tuple = tuple(symbols)
+            self.symbol_dict = {str(syn.get(s,s)): s for s in symbols}
+
+
+        def __len__(self):
+            return len(self.symbol_tuple)
+        
+        def __getitem__(self, key):
+            if(isinstance(key, int)):
+                return self.symbol_tuple[key]
+            if(isinstance(key, str)):
+                return self.symbol_dict[key]
+            
+            raise KeyError("Key must be an integer or a string")
+        
+
+        def __getattr__(self, key):
+            if(key in self.symbol_dict.keys()):
+                return self.symbol_dict[key]
+            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
+        
+        def __repr__(self):
+            return repr(self.symbol_tuple)
+        
+        def __iter__(self):
+            return iter(self.symbol_tuple)
+
+
+
+
     def __init__(
         self,
         f: Dict[sp.Symbol, sp.Expr],
@@ -60,7 +99,7 @@ class SymbolicSCM:
         pu : Dict[sp.Symbol, List]
             Dictionary of probability distributions for exogenous variables.
         syn : Dict[sp.Symbol, sp.Symbol]
-            Dictionary of synonymous variables.
+            Two-way dictionary of synonymous variables. Maps from endogenous domain to counterfactual and vice versa.
         precision : int
             Precision for displaying numerical results.
         _counterfactuals : Dict[sp.Symbol, object]
@@ -81,8 +120,7 @@ class SymbolicSCM:
         assert all(isinstance(k, sp.Symbol) for k in syn), syn
         assert all(isinstance(syn[k], sp.Symbol) for k in syn), syn
 
-        self.v = list(f)
-        self.u = list(pu)
+
         self.f = {k: sp.sympify(v) for k, v in f.items()}
 
         self.pu_domains = {
@@ -96,12 +134,13 @@ class SymbolicSCM:
         self.pu = {k: v if isinstance(v, list) else [1 - v, v] for k, v in pu.items()}
 
         self.syn = dict(syn)
-        self.syn.update({k: k for k in self.v})
+        self.v = self.SymbolContainer(list(f), self.syn)
+        self.u = self.SymbolContainer(list(pu), self.syn)
 
         # display precision
         self.precision = precision
-        self._interventions = {}
-        self._counterfactuals = {k: self for k in self.v}
+        self._interventions: Dict[int, SymbolicSCM] = {}
+        self._counterfactuals: Dict[sp.Symbol, SymbolicSCM] = {k: self for k in self.v}
 
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
         """
@@ -159,6 +198,10 @@ class SymbolicSCM:
         -----
         The method evaluates the probability of each combination of settings in `self.pu_domains`
         and computes the probability using the values in `self.pu`.
+        Raises
+        ------
+        AssertionError
+            
         """
 
         if symbols is None:
@@ -178,13 +221,15 @@ class SymbolicSCM:
                 self._counterfactuals[k] for k in symbols if k not in self.pu
             ):
                 record.update(scm._evaluate(u))
-
+ 
             records.append(
                 {
-                    k: hash(v) if v in [sp.false, sp.true] else int(v)
+                    k: hash(v) if v in [sp.false, sp.true, int] else None #TODO: Initiate a query for nested counterfactuals
                     for k, v in record.items()
                 }
             )
+
+            # Log-transformed multiplication of probabilities
             records[-1]["probability"] = math.exp(
                 sum(math.log(self.pu[k][u[k]]) for k in self.u)
             )
@@ -290,15 +335,23 @@ class SymbolicSCM:
         ------
         AssertionError
             If any of the keys in `x` are not present in the set of variables `self.v`.
+            If any of the counterfactual values in `x` do not belong to the domain of the key.
         """
 
         key = hash(tuple(sorted(x.items(), key=lambda t: (str(t[0]), t[1]))))
         if key in self._interventions:
             return self._interventions[key]
 
+
         assert all(k in self.v for k in x), x
+
+        assert all(isinstance(val, int) or (val == self._counterfactuals[val].syn[k])
+                    for k, val in x.items()), x
+
+
         subscript = ",".join(f"{k}={x[k]}" for k in x)
         vs = {k: sp.Symbol(f"{{{k}}}_{{{subscript}}}") for k in self.v}
+        vs_inv = {v: k for k, v in vs.items()}
 
         self._interventions[key] = scm = SymbolicSCM(
             f={
@@ -306,7 +359,7 @@ class SymbolicSCM:
                 for k, v in self.f.items()
             },
             pu=self.pu,
-            syn={**self.syn, **vs},
+            syn={**self.syn, **vs, **vs_inv},
         )
 
         ctfs = {k: scm for k in scm.v}
@@ -348,6 +401,7 @@ class SymbolicSCM:
                 "\\end{cases}$"
             ),
         }
+
 
 
 # class P(sp.Expr):
