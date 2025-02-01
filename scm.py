@@ -9,28 +9,32 @@ import sympy as sp
 from IPython.display import Latex
 
 
-# Updated syn dictionary to be a two-way dictionary
-# Implemented SymbolContainer class to allow for attribute access to symbols
-# Updated the do method to allow for counterfactuals and created assertion to check that counterfactuals are within the domain of the key
-# TODO: Update the query method to solve for counterfactuals
-
 
 class SymbolicSCM:
 
     class SymbolContainer:
         def __init__(self, symbols: List[sp.Symbol], syn: Dict[sp.Symbol, sp.Symbol]):
-            self.symbol_tuple = tuple(symbols)
+            self.symbol_list = list(symbols)
             self.symbol_dict = {str(syn.get(s,s)): s for s in symbols}
 
 
         def __len__(self):
-            return len(self.symbol_tuple)
+            return len(self.symbol_list)
         
         def __getitem__(self, key):
             if(isinstance(key, int)):
-                return self.symbol_tuple[key]
+                return self.symbol_list[key]
             if(isinstance(key, str)):
                 return self.symbol_dict[key]
+            if(isinstance(key,list)):
+                if(all(isinstance(k,int) for k in key)):
+                    return [self.symbol_list[k] for k in key]
+                if(all(isinstance(k,str) for k in key)):
+                    return [self.symbol_dict[k] for k in key]
+            if(isinstance(key, slice)):
+                start, stop, step = key.indices(len(self.symbol_list))
+                return [self.symbol_list[i] for i in range(start, stop, step)]
+
             
             raise KeyError("Key must be an integer or a string")
         
@@ -41,10 +45,13 @@ class SymbolicSCM:
             raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
         
         def __repr__(self):
-            return repr(self.symbol_tuple)
+            return repr(self.symbol_list)
         
         def __iter__(self):
-            return iter(self.symbol_tuple)
+            return iter(self.symbol_list)
+        
+        def __add__(self, other):
+            return self.symbol_list + other.symbol_list
 
 
 
@@ -104,6 +111,10 @@ class SymbolicSCM:
             Precision for displaying numerical results.
         _counterfactuals : Dict[sp.Symbol, object]
             Dictionary for storing counterfactuals.
+        _interventions : Dict[int, object]
+            Memoization dictionary for storing interventions.
+        _distributions : Dict[sp.Symbol, pd.DataFrame]
+            Dictionary for storing calculated probability distributions.
         """
         assert all(isinstance(k, sp.Symbol) for k in f), f
         assert all(isinstance(k, sp.Symbol) for k in pu), pu
@@ -142,6 +153,8 @@ class SymbolicSCM:
         self._interventions: Dict[int, SymbolicSCM] = {}
         self._counterfactuals: Dict[sp.Symbol, SymbolicSCM] = {k: self for k in self.v}
 
+        self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
+
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
         """
         Evaluate the structural causal model (SCM) given the exogenous variables.
@@ -174,6 +187,43 @@ class SymbolicSCM:
         for k in self.f:
             v[k] = self.f[k].subs(v)
         return v
+    
+    def _evaluate_symbolic_expression(self, expression: sp.Expr, u:Dict[sp.Symbol,int]) -> int:
+        """
+        Evaluate the symbolic expression given the exogenous variables using the probability table.
+
+        Parameters
+        ----------
+        expression : sp.Expr
+            A sympy expression representing the symbolic expression.
+        u : Dict[sp.Symbol, int]
+            A dictionary of exogenous variables and their corresponding settings.
+        Returns
+        -------
+        bool
+            A boolean value representing the evaluated expression based on the SCM.
+        """
+
+        output = expression
+        dist = None
+
+        syms = expression.atoms(sp.Symbol)
+
+        for s in syms:
+            if self._distributions.get(s) is None:
+                dist = self.get_probability_table([s, *u.keys()], u=True)
+            else:
+                dist = self._distributions[s]
+
+            val = int(dist.query(' & '.join(f"{k} == {v}" for k,v in u.items()))[s].values[0])
+
+            self._distributions[s] = dist
+
+            output = output.subs(s, val)
+                
+
+        return hash(output)
+    
 
     def get_probability_table(
         self, symbols: Optional[List[sp.Symbol]] = None, u: bool = False
@@ -201,7 +251,7 @@ class SymbolicSCM:
         Raises
         ------
         AssertionError
-            
+            If any key is both in the set of (counterfactuals on) the endogenous variables and the set of unobserved variables.
         """
 
         if symbols is None:
@@ -224,8 +274,10 @@ class SymbolicSCM:
  
             records.append(
                 {
-                    k: hash(v) if v in [sp.false, sp.true, int] else None #TODO: Initiate a query for nested counterfactuals
-                    for k, v in record.items()
+                    k:
+                        hash(v) if v in [sp.false, sp.true] or isinstance(v,(int,sp.core.numbers.Zero,sp.core.numbers.One,sp.core.numbers.Integer,float))
+                        else self._evaluate_symbolic_expression(v,u)
+                        for k, v in record.items()
                 }
             )
 
@@ -233,6 +285,7 @@ class SymbolicSCM:
             records[-1]["probability"] = math.exp(
                 sum(math.log(self.pu[k][u[k]]) for k in self.u)
             )
+                    
 
         return pd.DataFrame(records).groupby(symbols).probability.sum().reset_index()
 
@@ -345,7 +398,7 @@ class SymbolicSCM:
 
         assert all(k in self.v for k in x), x
 
-        assert all(isinstance(val, int) or (val == self._counterfactuals[val].syn[k])
+        assert all(isinstance(val, int) or isinstance(val, sp.Symbol) or isinstance(val, sp.Basic)
                     for k, val in x.items()), x
 
 
@@ -401,7 +454,6 @@ class SymbolicSCM:
                 "\\end{cases}$"
             ),
         }
-
 
 
 # class P(sp.Expr):
