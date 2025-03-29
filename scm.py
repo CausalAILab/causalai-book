@@ -2,57 +2,20 @@ from __future__ import annotations
 
 import itertools
 import math
+
 from typing import Dict, List, Optional, Union
 
 import pandas as pd
 import sympy as sp
 from IPython.display import Latex
 
+from symbolContainer import SymbolContainer
+
+from readOnly import ReadOnly
+
 
 
 class SymbolicSCM:
-
-    class SymbolContainer:
-        def __init__(self, symbols: List[sp.Symbol], syn: Dict[sp.Symbol, sp.Symbol]):
-            self.symbol_list = list(symbols)
-            self.symbol_dict = {str(syn.get(s,s)): s for s in symbols}
-
-
-        def __len__(self):
-            return len(self.symbol_list)
-        
-        def __getitem__(self, key):
-            if(isinstance(key, int)):
-                return self.symbol_list[key]
-            if(isinstance(key, str)):
-                return self.symbol_dict[key]
-            if(isinstance(key,list)):
-                if(all(isinstance(k,int) for k in key)):
-                    return [self.symbol_list[k] for k in key]
-                if(all(isinstance(k,str) for k in key)):
-                    return [self.symbol_dict[k] for k in key]
-            if(isinstance(key, slice)):
-                start, stop, step = key.indices(len(self.symbol_list))
-                return [self.symbol_list[i] for i in range(start, stop, step)]
-
-            
-            raise KeyError("Key must be an integer or a string")
-        
-
-        def __getattr__(self, key):
-            if(key in self.symbol_dict.keys()):
-                return self.symbol_dict[key]
-            raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{key}'")
-        
-        def __repr__(self):
-            return repr(self.symbol_list)
-        
-        def __iter__(self):
-            return iter(self.symbol_list)
-        
-        def __add__(self, other):
-            return self.symbol_list + other.symbol_list
-
 
 
 
@@ -145,8 +108,8 @@ class SymbolicSCM:
         self.pu = {k: v if isinstance(v, list) else [1 - v, v] for k, v in pu.items()}
 
         self.syn = dict(syn)
-        self.v = self.SymbolContainer(list(f), self.syn)
-        self.u = self.SymbolContainer(list(pu), self.syn)
+        self.v = SymbolContainer(list(f), self.syn)
+        self.u = SymbolContainer(list(pu), self.syn)
 
         # display precision
         self.precision = precision
@@ -154,6 +117,8 @@ class SymbolicSCM:
         self._counterfactuals: Dict[sp.Symbol, SymbolicSCM] = {k: self for k in self.v}
 
         self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
+
+        # self.graph = ReadOnly(CausalGraph(self), banned_attrs = [])
 
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
         """
@@ -211,7 +176,7 @@ class SymbolicSCM:
 
         for s in syms:
             if self._distributions.get(s) is None:
-                dist = self.get_probability_table([s, *u.keys()], u=True)
+                dist = self.get_probability_table([s], include_u=True)
             else:
                 dist = self._distributions[s]
 
@@ -226,7 +191,7 @@ class SymbolicSCM:
     
 
     def get_probability_table(
-        self, symbols: Optional[List[sp.Symbol]] = None, u: bool = False
+        self, symbols: Optional[List[sp.Symbol]] = None, include_u: bool = False
     ) -> pd.DataFrame:
         """
         Generate a probability table for the given symbols.
@@ -253,22 +218,28 @@ class SymbolicSCM:
         AssertionError
             If any key is both in the set of (counterfactuals on) the endogenous variables and the set of unobserved variables.
         """
+        
+        _symbols = []
+        
+        if include_u:
+            _symbols += list(self.u)
 
         if symbols is None:
-            if u:
-                symbols = self.u + self.v
-            else:
-                symbols = self.v
+            _symbols += list(self.v)
+        else:
+            _symbols += [self.syn.get(k, k) for k in symbols]
+            
+        
         assert all(
-            (k in self._counterfactuals) != (k in self.pu) for k in symbols
-        ), symbols
+            (k in self._counterfactuals) != (k in self.pu) for k in _symbols
+        ), _symbols
 
         settings = [[(k, i) for i in v] for k, v in self.pu_domains.items()]
         records = []
         for u in map(dict, itertools.product(*settings)):
             record = {}
             for scm in set(
-                self._counterfactuals[k] for k in symbols if k not in self.pu
+                self._counterfactuals[k] for k in _symbols if k not in self.pu
             ):
                 record.update(scm._evaluate(u))
  
@@ -287,7 +258,7 @@ class SymbolicSCM:
             )
                     
 
-        return pd.DataFrame(records).groupby(symbols).probability.sum().reset_index()
+        return pd.DataFrame(records).groupby(list(_symbols)).probability.sum().reset_index()
 
     def sample(self, n: int = 1) -> pd.DataFrame:
         """
@@ -369,7 +340,7 @@ class SymbolicSCM:
         query = " and ".join(f"`{str(k)}` == {str(x[k])}" for k in x)
         return pt.query(query).probability.sum()
 
-    def do(self, x: Dict[sp.Symbol, int]) -> SymbolicSCM:
+    def do(self, x: Dict[sp.Symbol, Union[sp.Expr, int, sp.Symbol]]) -> SymbolicSCM:
         """
         Perform the do-operation on the structural causal model (SCM).
         The do-operation simulates an intervention where the values of certain variables
@@ -377,7 +348,7 @@ class SymbolicSCM:
         parent variables in the causal graph.
         Parameters
         ----------
-        x : Dict[sp.Symbol, int]
+        x : Dict[sp.Symbol, Union[sp.Expr, int, sp.Symbol]]
             A dictionary where keys are the variables to intervene on, and values are
             the fixed values for these variables.
         Returns
