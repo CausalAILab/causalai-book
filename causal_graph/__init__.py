@@ -6,7 +6,7 @@ import sympy as sp
 
 import networkx as nx
 
-from symbolContainer import SymbolContainer
+from symbol_container import SymbolContainer
 
 from causal_graph.dsep import DSeparation
 

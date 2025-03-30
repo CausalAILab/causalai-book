@@ -9,9 +9,9 @@ import pandas as pd
 import sympy as sp
 from IPython.display import Latex
 
-from symbolContainer import SymbolContainer
+from symbol_container import SymbolContainer
 
-from readOnly import ReadOnly
+from read_only import ReadOnly
 
 
 
@@ -165,8 +165,8 @@ class SymbolicSCM:
             A dictionary of exogenous variables and their corresponding settings.
         Returns
         -------
-        bool
-            A boolean value representing the evaluated expression based on the SCM.
+        int
+            An integer value representing the evaluated expression based on the SCM.
         """
 
         output = expression
