@@ -18,7 +18,6 @@ from read_only import ReadOnly
 class SymbolicSCM:
 
 
-
     def __init__(
         self,
         f: Dict[sp.Symbol, sp.Expr],
@@ -69,7 +68,7 @@ class SymbolicSCM:
         pu : Dict[sp.Symbol, List]
             Dictionary of probability distributions for exogenous variables.
         syn : Dict[sp.Symbol, sp.Symbol]
-            Two-way dictionary of synonymous variables. Maps from endogenous domain to counterfactual and vice versa.
+            A dictionary mapping endogenous variables to their synonymous variables. Defaults to an empty dictionary.
         precision : int
             Precision for displaying numerical results.
         _counterfactuals : Dict[sp.Symbol, object]
@@ -199,9 +198,9 @@ class SymbolicSCM:
         ----------
         symbols : list, optional
             A list of symbols to include in the probability table. If None, the symbols
-            will be determined based on the value of `u`. If `u` is True, the symbols
+            will be determined based on the value of `u`. If `include_u` is True, the symbols
             will include both `self.u` and `self.v`. Otherwise, only `self.v` will be included.
-        u : bool, default=False
+        include_u : bool, default=False
             A flag indicating whether to include `self.u` symbols in the probability table.
         Returns
         -------
@@ -246,8 +245,10 @@ class SymbolicSCM:
             records.append(
                 {
                     k:
-                        hash(v) if v in [sp.false, sp.true] or isinstance(v,(int,sp.core.numbers.Zero,sp.core.numbers.One,sp.core.numbers.Integer,float))
-                        else self._evaluate_symbolic_expression(v,u)
+                        hash(v) if v in [sp.false, sp.true] 
+                            else 
+                        int(v) if isinstance(v,(int,sp.core.numbers.Zero,sp.core.numbers.One,sp.core.numbers.Integer,float))
+                            else self._evaluate_symbolic_expression(v,u)
                         for k, v in record.items()
                 }
             )
@@ -375,7 +376,6 @@ class SymbolicSCM:
 
         subscript = ",".join(f"{k}={x[k]}" for k in x)
         vs = {k: sp.Symbol(f"{{{k}}}_{{{subscript}}}") for k in self.v}
-        vs_inv = {v: k for k, v in vs.items()}
 
         self._interventions[key] = scm = SymbolicSCM(
             f={
@@ -383,7 +383,7 @@ class SymbolicSCM:
                 for k, v in self.f.items()
             },
             pu=self.pu,
-            syn={**self.syn, **vs, **vs_inv},
+            syn={**self.syn, **vs},
         )
 
         ctfs = {k: scm for k in scm.v}

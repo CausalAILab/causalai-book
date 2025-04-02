@@ -8,14 +8,14 @@ import networkx as nx
 
 from symbol_container import SymbolContainer
 
-from causal_graph.dsep import DSeparation
+from causal_diagram.dsep import DSeparation
 
-from causal_graph.adjustments import Adjustments
+from causal_diagram.adjustments import Adjustments
 
-from causal_graph.do_calc import DoCalc
+from causal_diagram.do_calc import DoCalc
 
 
-class CausalGraph(DSeparation,Adjustments,DoCalc):
+class CausalDiagram(DSeparation,Adjustments,DoCalc):
 
 
     @overload

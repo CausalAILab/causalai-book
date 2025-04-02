@@ -4,7 +4,7 @@ import sympy as sp
 class SymbolContainer:
     def __init__(self, symbols: List[sp.Symbol] = [], syn: Dict[sp.Symbol, sp.Symbol] = {}):
         self.symbol_list = list(symbols)
-        self.symbol_dict = {str(syn.get(s,s)): s for s in symbols}
+        self.symbol_dict = {str(s): sx for s, sx in syn.items()} if len(syn) > 0 else {str(s): s for s in symbols}
 
 
     def __len__(self):
