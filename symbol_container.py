@@ -4,7 +4,7 @@ import sympy as sp
 class SymbolContainer:
     def __init__(self, symbols: List[sp.Symbol] = [], syn: Dict[sp.Symbol, sp.Symbol] = {}):
         self.symbol_list = list(symbols)
-        self.symbol_dict = {s:s for s in symbols} | syn # RHS precedence
+        self.symbol_dict = {str(s):s for s in symbols} | {str(k):v for k,v in syn.items()} # RHS precedence
 
 
     def __len__(self):

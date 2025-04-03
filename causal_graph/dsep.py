@@ -21,6 +21,11 @@ class DSeparation(ABC):
     @abstractmethod
     def be_graph(self):
         pass
+    
+    @property
+    @abstractmethod
+    def combined_graph(self):
+        pass
 
     @property
     @abstractmethod
@@ -37,6 +42,10 @@ class DSeparation(ABC):
     def cc(self):
         pass
 
+    # TODO: Revise for situation where X cannot be separated from a connected component containing Y or vice versa
+        
+        
+        
 
     def is_d_separator(self, x: sp.Symbol, y: sp.Symbol, given: Set[sp.Symbol] = set()) -> bool:
         """
@@ -67,12 +76,8 @@ class DSeparation(ABC):
 
         if X in giv or Y in giv:
             return True
-
-        for comp in self.cc:
-            if X in comp and Y in comp:
-                return False
-
-        return nx.is_d_separator(self.de_graph, X, Y, giv)
+                    
+        return nx.is_d_separator(self.combined_graph, X, Y, giv)
 
 
     def is_minimal_d_separator(self, x: sp.Symbol, y: sp.Symbol, given: Set[sp.Symbol] = set()) -> bool:
@@ -104,12 +109,10 @@ class DSeparation(ABC):
 
         if X in giv or Y in giv:
             return True
-
-        for comp in self.cc:
-            if X in comp and Y in comp:
-                return False
-
+                    
+                    
         return nx.is_minimal_d_separator(self.de_graph, X, Y, giv)
+            
 
 
     def find_minimal_d_separator(self, x: sp.Symbol, y: sp.Symbol, included: Set[sp.Symbol] = None, restricted: Set[sp.Symbol] = None) -> Union[None, Set]:
@@ -138,12 +141,9 @@ class DSeparation(ABC):
 
         if X == Y:
             return None
+    
 
-        for comp in self.cc:
-            if X in comp and Y in comp:
-                return None
-
-        return nx.find_minimal_d_separator(self.de_graph, X, Y, included=included, restricted=restricted)
+        return nx.find_minimal_d_separator(self.combined_graph, X, Y, included=included, restricted=restricted)
 
 
     def find_all_d_separators(self, x: sp.Symbol, y: sp.Symbol) -> Union[None, List[Set]]:
@@ -169,14 +169,10 @@ class DSeparation(ABC):
 
         if X == Y:
             return [None]
-
-        for comp in self.cc:
-            if X in comp and Y in comp:
-                return [None]
-
+    
         v_less_xy = set(self.v) - {X, Y}
 
-        return [s for s in powerset(v_less_xy) if nx.is_d_separator(self.de_graph, X, Y, s)]
+        return [s for s in powerset(v_less_xy) if nx.is_d_separator(self.combined_graph,X, Y, s)]
 
 
 

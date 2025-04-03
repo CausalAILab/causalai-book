@@ -13,6 +13,8 @@ from symbol_container import SymbolContainer
 
 from read_only import ReadOnly
 
+from causal_graph import CausalGraph
+
 
 
 class SymbolicSCM:
@@ -62,7 +64,7 @@ class SymbolicSCM:
         u : List[sp.Symbol]
             List of exogenous variables.
         f : Dict[sp.Symbol, sp.Expr]
-            Dictionary of structural equations.
+            Dictionary of structural equations. Must be loaded sequentially by dependency.
         pu_domains : Dict[sp.Symbol, List]
             Dictionary mapping exogenous variables to their domains.
         pu : Dict[sp.Symbol, List]
@@ -94,6 +96,7 @@ class SymbolicSCM:
         assert all(isinstance(syn[k], sp.Symbol) for k in syn), syn
 
 
+
         self.f = {k: sp.sympify(v) for k, v in f.items()}
 
         self.pu_domains = {
@@ -117,7 +120,7 @@ class SymbolicSCM:
 
         self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
 
-        # self.graph = ReadOnly(CausalGraph(self), banned_attrs = [])
+        self.graph = ReadOnly(CausalGraph.from_scm(self), banned_attrs = [])
 
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
         """
