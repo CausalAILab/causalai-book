@@ -143,7 +143,7 @@ class DSeparation(ABC):
             if X in comp and Y in comp:
                 return None
 
-        return nx.find_minimal_d_separator(self.de_graph, X, Y, included, restricted)
+        return nx.find_minimal_d_separator(self.de_graph, X, Y, included=included, restricted=restricted)
 
 
     def find_all_d_separators(self, x: sp.Symbol, y: sp.Symbol) -> Union[None, List[Set]]:
