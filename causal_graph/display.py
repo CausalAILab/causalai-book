@@ -48,13 +48,21 @@ class Display:
             fillcolor = "style=filled, fillcolor=lightgray"
             dot_str += f'  {node} [label="{node}" {pos} {fillcolor}];\n'
             
-        for edge in [*self.de_graph.edges, *self.be_graph.edges]:
-            style = f"penwidth=2.0"
+        style = f"penwidth=2.0"
+            
+        for edge in self.de_graph.edges:
+            arrow_type = (
+                f"[{style}]"
+            )
+            
+            dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'
+            
+            
+        for edge in self.be_graph.edges:
+
             
             arrow_type = (
                 f"[dir=both, style=dashed, constraint=false, splines=curved, {style}]"
-                if edge in self.be_graph.edges
-                else f"[{style}]"
             )
             
             dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'

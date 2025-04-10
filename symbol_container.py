@@ -2,9 +2,16 @@ from typing import List, Dict
 import sympy as sp
 
 class SymbolContainer:
-    def __init__(self, symbols: List[sp.Symbol] = [], syn: Dict[sp.Symbol, sp.Symbol] = {}):
+    def __init__(self, symbols: List[sp.Symbol] = None, syn: Dict[sp.Symbol, sp.Symbol] = None):
+        
+        if symbols is None:
+            symbols = []
+        if syn is None:
+            syn = {}
+        
         self.symbol_list = list(symbols)
         self.symbol_dict = {str(s):s for s in symbols} | {str(k):v for k,v in syn.items()} # RHS precedence
+        self.symbol_set = set(self.symbol_list)
 
 
     def __len__(self):
@@ -40,7 +47,42 @@ class SymbolContainer:
         return iter(self.symbol_list)
     
     def __add__(self, other):
+        if isinstance(other, list):
+            return self.symbol_list + other
+        if isinstance(other, set):
+            return self.symbol_set + other
+
         return self.symbol_list + other.symbol_list
     
     def __subtract__(self, other):
+        if isinstance(other, list):
+            return self.symbol_list - other
+        if isinstance(other, set):
+            return self.symbol_set - other
+
         return self.symbol_list - other.symbol_list
+    
+    def __or__(self, other):
+        if isinstance(other, set):
+            return self.symbol_set | other
+        
+        return self.symbol_set | other.symbol_set
+    
+    def __and__(self, other):
+        if isinstance(other, set):
+            return self.symbol_set & other
+        
+        return self.symbol_set & other.symbol_set
+    
+    def __contains__(self, item):
+        
+        return item in self.symbol_set
+    
+    def __eq__(self, other):
+        
+        if isinstance(other, set):
+            return self.symbol_set == other
+        if isinstance(other, list):
+            return self.symbol_list == other
+
+        return self.symbol_set == other.symbol_set

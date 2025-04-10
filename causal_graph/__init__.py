@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union, overload, Tuple
+from typing import Dict, List, Optional, Set, Union, overload, Tuple
 
 
 
@@ -13,12 +13,33 @@ from causal_graph.display import Display
 from causal_graph.dsep import DSeparation
 from causal_graph.adjustments import Adjustments
 from causal_graph.do_calc import DoCalc
-from causal_graph.internal import Internal
+from causal_graph.accessors import Accessors
+
+import causal_graph.utils as utils
 
 from IPython.display import display
 
 
-class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Internal):
+class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
+    """
+    _summary_
+
+    Parameters
+    ----------
+    DSeparation : _type_
+        _description_
+    Adjustments : _type_
+        _description_
+    DoCalc : _type_
+        _description_
+    Display : _type_
+        _description_
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
     
     @property
     def de_graph(self):
@@ -70,19 +91,24 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Internal):
                 if symbol in scm.u:
                     collection.setdefault(symbol, []).append(s)
                     
-        for u in collection.keys():
-            if len(collection[u]) > 1:
-                for i in range(len(collection[u])):
-                    for j in range(i+1,len(collection[u])):
-                        be.append((collection[u][i],collection[u][j]))
+        for v_list in collection.values():
+            if len(v_list) > 1:
+                for i in range(len(v_list)):
+                    for j in range(i+1,len(v_list)):
+                        be.append((v_list[i],v_list[j]))
                     
         
         
         return cls(list(scm.v),de,be)
         
 
-    def __init__(self, v:List[sp.Symbol] = [],  directed_edges:List[Tuple[sp.Symbol,sp.Symbol]] = [],
-                 bidirected_edges:List[Tuple[sp.Symbol,sp.Symbol]] = [],syn:Dict[sp.Symbol,sp.Symbol] = {}):
+    def __init__(self, v:Optional[List[sp.Symbol]] = None, directed_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None,
+                 bidirected_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None, syn:Optional[Dict[sp.Symbol,sp.Symbol]] = None):
+        
+        v = v or []
+        directed_edges = directed_edges or []
+        bidirected_edges = bidirected_edges or []
+        syn = syn or {}
         
 
         for edge in bidirected_edges:
@@ -116,30 +142,27 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Internal):
         self.de_graph.add_edges_from(directed_edges)
         self.be_graph.add_edges_from(bidirected_edges)
         
-        self._cdg = self._combine_to_directed()
+        self._cdg = utils.combine_to_directed(self.de_graph,self.be_graph)
     
 
+    def do_x(self, x:Union[sp.Symbol, Set[sp.Symbol]]):
+        """
+        Do operation on the variable X
+        """
+        # TODO: Potentially add subscript logic to the do operation
+        
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else [x])}
+        
+        graph = self.__class__(self.v,
+                                [edge for edge in self.de_graph.edges if edge[1] not in x_set],
+                                [edge for edge in self.be_graph.edges if edge[0] not in x_set or edge[1] not in x_set])
 
-
-
-
-    def get_parents(self, node:sp.Symbol):
-        return SymbolContainer(self.de_graph.predecessors(node),self.syn)
-    
-    def get_children(self, node:sp.Symbol):
-        return SymbolContainer(self.de_graph.successors(node),self.syn)
-    
-    def get_ancestors(self, node:sp.Symbol):
-        return SymbolContainer(nx.ancestors(self.de_graph, node),self.syn)
-    
-    def get_neighbors(self, node:sp.Symbol):
-        return SymbolContainer(self.be_graph.neighbors(node),self.syn)
-    
-    def get_connected_component(self, node:sp.Symbol):
-        return SymbolContainer([c for c in self.cc if node in c][-1],self.syn)
+        return graph
     
     
-    def draw(self, node_positions:Dict[sp.Symbol,Tuple[int,int]] = {}) -> None:
+    def draw(self, node_positions:Optional[Dict[sp.Symbol,Tuple[int,int]]] = None) -> None:
+        if node_positions is None:
+            node_positions = {}
         src = Source(self.convert_to_dot(node_positions=node_positions),engine="neato")
     
         return display(src)
@@ -148,9 +171,6 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Internal):
         pass
 
 
-    
-
-    #TODO: Consider how to differentiate methods that affect the object and those that return a new object
     
 
     
