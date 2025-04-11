@@ -66,12 +66,15 @@ class DSeparation(ABC):
         bool
             True if every pair (x_val, y_val) from X and Y is d-separated given the set, False otherwise.
         """
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else {x})}
-        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list)) else {y})}
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
         if given is None:
             giv = set()
         else:
-            giv = {self.syn.get(g, g) for g in (given if isinstance(given, (set, list)) else {given})}
+            giv = {self.syn.get(g, g) for g in (given if isinstance(given, (set, list, SymbolContainer)) else {given})}
+            
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return False
             
         if x_set & y_set:
             return False
@@ -108,12 +111,16 @@ class DSeparation(ABC):
         bool
             True if every pair (x_val, y_val) from X and Y is minimally d-separated given the set, False otherwise.
         """
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else {x})}
-        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list)) else {y})}
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
+        
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return False
+        
         if given is None:
             giv = set()
         else:
-            giv = {self.syn.get(g, g) for g in (given if isinstance(given, (set, list)) else {given})}
+            giv = {self.syn.get(g, g) for g in (given if isinstance(given, (set, list, SymbolContainer)) else {given})}
         if x_set & y_set:
             return False
         for x_val in x_set:
@@ -151,13 +158,15 @@ class DSeparation(ABC):
         Union[None, Set]
             The minimal set of variables that d-separates X and Y if one exists; otherwise, None.
         """
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else {x})}
-        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list)) else {y})}
-        included_set = {self.syn.get(i, i) for i in (included if isinstance(included, (set, list)) else {included})}if included else set(self.v) - x_set - y_set
-        restricted_set = {self.syn.get(r, r) for r in (restricted if isinstance(restricted, (set, list)) else {restricted})} if restricted else set(self.v) - x_set - y_set
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
+        included_set = {self.syn.get(i, i) for i in (included if isinstance(included, (set, list, SymbolContainer)) else {included})}if included else set()
+        restricted_set = {self.syn.get(r, r) for r in (restricted if isinstance(restricted, (set, list, SymbolContainer)) else {restricted})} if restricted else set(self.v) - x_set - y_set
         
         included_set &= restricted_set
         
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return None
         
         if x_set & y_set:
             return None
@@ -203,16 +212,20 @@ class DSeparation(ABC):
             A list of SymbolContainer, where each set is a group of variables that d-separates X and Y.
             If X and Y share any common element, returns None.
         """
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else {x})}
-        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list)) else {y})}
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
         
-        included_set = {self.syn.get(i, i) for i in (included if isinstance(included, (set, list)) else {included})}if included else set(self.v) - x_set - y_set
-        restricted_set = {self.syn.get(r, r) for r in (restricted if isinstance(restricted, (set, list)) else {restricted})} if restricted else set(self.v) - x_set - y_set
+        included_set = {self.syn.get(i, i) for i in (included if isinstance(included, (set, list, SymbolContainer)) else {included})}if included else set()
+        restricted_set = {self.syn.get(r, r) for r in (restricted if isinstance(restricted, (set, list, SymbolContainer)) else {restricted})} if restricted else set(self.v) - x_set - y_set
         
         included_set &= restricted_set
         
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return None
+        
         if x_set & y_set:
             return None
+        
         candidate_vars = set(self.v) - x_set - y_set - (x_set | y_set)
         all_seps = []
         for candidate in utils.powerset(candidate_vars):
@@ -245,8 +258,11 @@ class DSeparation(ABC):
             A List of SymbolContainers, where each list represents a proper causal path from X to Y.
         """
         
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else {x})}
-        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list)) else {y})}
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
+        
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return None
         
         if x_set & y_set:
             return None

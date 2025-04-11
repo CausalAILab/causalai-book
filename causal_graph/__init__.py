@@ -143,6 +143,41 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
         self.be_graph.add_edges_from(bidirected_edges)
         
         self._cdg = utils.combine_to_directed(self.de_graph,self.be_graph)
+        
+        
+    def __and__(self, other):
+        """
+        Combine two causal graphs
+        """
+        assert isinstance(other, CausalGraph), "Can only combine with another CausalGraph"
+        
+        if self.v != other.v:
+            raise ValueError("Cannot combine graphs with different symbols")
+        
+        combined = self.__class__(self.v,
+                                  set(self.de_graph.edges) & set(other.de_graph.edges),
+                                  set(self.be_graph.edges) & set(other.be_graph.edges),
+                                self.syn)
+        
+        return combined
+    
+    
+    def __or__(self, other):
+        """
+        Combine two causal graphs
+        """
+        assert isinstance(other, CausalGraph), "Can only combine with another CausalGraph"
+        
+        if self.v != other.v:
+            raise ValueError("Cannot combine graphs with different symbols")
+        
+        combined = self.__class__(self.v,
+                                  set(self.de_graph.edges) | set(other.de_graph.edges),
+                                  set(self.be_graph.edges) | set(other.be_graph.edges),
+                                  self.syn)
+        
+        return combined
+        
     
 
     def do_x(self, x:Union[sp.Symbol, Set[sp.Symbol]]):

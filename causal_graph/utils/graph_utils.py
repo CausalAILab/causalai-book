@@ -10,7 +10,7 @@ from typing import List, Dict, Tuple
 
 def combine_to_directed(de_graph, be_graph):
     
-    combined_graph = nx.MultiDiGraph(de_graph)
+    combined_graph = nx.DiGraph(de_graph)
     
     i = 0
     for edge in be_graph.edges:
