@@ -13,6 +13,8 @@ from symbol_container import SymbolContainer
 
 import causal_graph.utils as utils
 
+from IPython.display import Latex
+
 
 
 class Adjustments(ABC):
@@ -106,7 +108,8 @@ class Adjustments(ABC):
     def is_backdoor_adjustment(self, x:Union[sp.Symbol, Set[sp.Symbol]],
                                y:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
                                z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                               drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
+                               drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
+                               latex:bool=False):
         """
         Check if X is a backdoor adjustment for Y given the variables
         """
@@ -131,7 +134,12 @@ class Adjustments(ABC):
                 if (z_set & w_desc):
                     return False
 
-        return bd_graph.is_d_separator(x_set, y_set, z_set)
+        if bd_graph.is_d_separator(x_set, y_set, z_set):
+            if latex:
+                return self.get_backdoor_adjustment_formula(x_set,y_set,z_set)
+            return True
+        
+        return False
     
     
     def get_backdoor_adjustment_formula(self, x:Union[sp.Symbol, Set[sp.Symbol]],
@@ -150,45 +158,66 @@ class Adjustments(ABC):
         if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
             return None
         
+
         
-        if self.is_backdoor_adjustment(x_set,y_set,z_set&given_set):
-            return None #TODO: UPDATE LATEX
+        if self.is_backdoor_adjustment(x_set,y_set,z_set|given_set):
+            x_latex = utils.format_set(x_set)
+            y_latex = utils.format_set(y_set)
+            z_latex = utils.format_set(z_set)
+            given_latex = utils.format_set(given_set)
             
+            lhs = utils.build_conditional_set(y_latex, r'\text{do}(' + x_latex + r')', given_latex)
+            
+            if len(z_set) > 0:
+                rhs = (
+                    r'\sum_{'+ z_latex + r'} ' +
+                    utils.build_conditional_set(y_latex, x_latex, z_latex, given_latex) + ' ' +
+                    utils.build_conditional_set(z_latex, given_latex)
+                )
+            else:
+                rhs = utils.build_conditional_set(y_latex, x_latex, given_latex)
+                
+            return Latex(f"${lhs} = {rhs}$")
             
         else:
             return None
         
         
         
-        
-        
-    def _exists_sep(self, x, y, z0, bd_graph, do_graph, pcp):
+    def _forbidden_set(self, z0, do_graph, pcp):
         """
-        Check if there is a separation between X and Y given Z
+        Check if there is a forbidden set between X and Y
         """
         for path in pcp:
             for step in path[1:]:
                 w_desc = set(do_graph.get_descendants(step,include_self=True))
                 if (z0 & w_desc):
-                    return False
+                    return z0 & w_desc
+
+        return set()
+        
+    def _exists_sep(self, x, y, z0, bd_graph):
+        """
+        Check if there is a separation between X and Y given Z
+        """
 
         return bd_graph.is_d_separator(x, y, z0)
     
-    def _list_seps(self, x, y, included, restricted, bd_graph, do_graph, pcp, drop_z=None):
+    def _list_seps(self, x, y, included, restricted, bd_graph,drop_z=None):
         
         z0 = set(self.get_ancestors(x | y | included, include_self=True)) & restricted
         
-        if drop_z is not None:
+        if drop_z and len(drop_z) > 0:
             z0 = z0 - drop_z
         
-        if self._exists_sep(x, y, z0, bd_graph, do_graph, pcp):
+        if self._exists_sep(x, y, z0, bd_graph):
             if (included | restricted) == included:
                 return included
             else:
                 w = {list(restricted - included)[-1]}
                 
-                res1 = self._list_seps(x, y, included | w, restricted, bd_graph, do_graph, pcp,drop_z)
-                res2 = self._list_seps(x, y, included, restricted - w, bd_graph, do_graph, pcp, drop_z)
+                res1 = self._list_seps(x, y, included | w, restricted, bd_graph, drop_z)
+                res2 = self._list_seps(x, y, included, restricted - w, bd_graph,  drop_z)
                 
                 if res2 is not None:
                     return res2
@@ -201,7 +230,8 @@ class Adjustments(ABC):
                                y:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
                                included:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                               drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None) -> SymbolContainer:
+                               drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
+                               latex:bool=False) -> SymbolContainer:
         """
         Find a backdoor adjustment set for X -> Y
         """
@@ -221,9 +251,20 @@ class Adjustments(ABC):
         do_graph = self.do_x(x_set)
         pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=True)
         
-        val = self._list_seps(x_set,y_set,included_set, restricted_set, bd_graph, do_graph, pcp, drop_z=drop_z_set)
+        forbidden = self._forbidden_set(restricted_set, do_graph, pcp)
+        
+        if len(included_set & forbidden) > 0:
+            return None
+        
+        restricted_set -= forbidden
+        
+        val = self._list_seps(x_set,y_set,included_set, restricted_set, bd_graph, drop_z=drop_z_set)
         
         if val:
+            
+            if latex:
+                return self.get_backdoor_adjustment_formula(x_set,y_set,val)
+            
             return SymbolContainer(val, self.syn)
 
         return None
@@ -251,8 +292,13 @@ class Adjustments(ABC):
         do_graph = self.do_x(x_set)
         pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=True)
         
+        forbidden = self._forbidden_set(restricted_set, do_graph, pcp)
         
-        lst =  [s for s in utils.powerset(restricted_set) if ((sym in included for sym in s) and (self._exists_sep(x_set, y_set, s, bd_graph, do_graph, pcp)))]
+        if len(included_set & forbidden) > 0:
+            return None
+        
+        
+        lst =  [s for s in utils.powerset(restricted_set-forbidden) if ((sym in included for sym in s) and (self._exists_sep(x_set, y_set, s, bd_graph)))]
         
         if len(lst) > 0:
             return lst
@@ -266,7 +312,8 @@ class Adjustments(ABC):
                                y:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
                                z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                xz:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                               zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
+                               zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
+                               latex:bool=False):
         """
         Check if X is a frontdoor adjustment for Y given the variables
         """
@@ -282,6 +329,10 @@ class Adjustments(ABC):
                 self.is_backdoor_adjustment(z_set,y_set,zy_set,drop_z=x_set)
                 *[True for path in self.find_all_proper_causal_paths(x_set, y_set, full_path=True) if len(z_set & path) > 0],
                ]):
+            
+            if latex:
+                return self.get_frontdoor_adjustment_formula(x_set,y_set,z_set,xz_set,zy_set)
+            
             return True
         else:
             return False
@@ -293,10 +344,59 @@ class Adjustments(ABC):
                                          y:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
                                         z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                         xz:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                                        zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                                        given:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
+                                        zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
+                                            
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list,SymbolContainer)) else {y})}
+        z_set = {self.syn.get(z_val, z_val) for z_val in (z if isinstance(z, (set, list,SymbolContainer)) else {z})} if z else set()
+        xz_set = {self.syn.get(z_val, z_val) for z_val in (xz if isinstance(xz, (set, list,SymbolContainer)) else {xz})} if xz else set()
+        zy_set = {self.syn.get(z_val, z_val) for z_val in (zy if isinstance(zy, (set, list,SymbolContainer)) else {zy})} if zy else set()
         
-        pass
+        
+        x_latex = utils.format_set(x_set)
+        y_latex = utils.format_set(y_set)
+        z_latex = utils.format_set(z_set)
+        xz_latex = utils.format_set(xz_set)
+        zy_latex = utils.format_set(zy_set)
+        
+        if (x_set is None or len(x_set) < 1 or len(y_set) < 1 or y_set is None):
+            return None
+            
+        
+        if self.is_frontdoor_adjustment(x_set,y_set,z_set,xz_set,zy_set):
+            lhs = utils.build_conditional_set(y_latex, r'\text{do}(' + x_latex + r')')
+            
+            if len(z_set) > 0:
+                z_sum = r'\sum_{'+ z_latex + r'} '
+            else:
+                z_sum = ''
+                
+            if len(xz_set) > 0:
+                xz_sum = r'\sum_{'+ xz_latex + r'} '
+            else:  
+                xz_sum = ''
+                
+            if len(zy_set) > 0:
+                zy_sum = r'\sum_{x\','+ zy_latex + r'} '
+            else:
+                zy_sum = r'\sum_{x\'} '
+                
+                
+            rhs = (
+                z_sum + xz_sum +
+                utils.build_conditional_set(y_latex, x_latex, xz_latex) +
+                (utils.build_joint_set(xz_latex) if len(xz_set) > 0 else '') +
+                zy_sum + 
+                utils.build_conditional_set(y_latex,"x\'",z_latex, zy_latex) +
+                utils.build_joint_set("x\'",zy_latex)
+            )
+            
+            
+            return Latex(f"${lhs} = {rhs}$")
+            
+            
+        else:
+            return None
         
         
     
@@ -305,7 +405,7 @@ class Adjustments(ABC):
         
         
         z1 = self.find_backdoor_adjustment(x, z, included, restricted)
-        z2 = self.find_backdoor_adjustment(z, y, included, restricted,drop_z=x)
+        z2 = self.find_backdoor_adjustment(z, y, included, restricted, drop_z=x)
         
         if all([
                 z1 is not None,
@@ -353,7 +453,8 @@ class Adjustments(ABC):
         
 
     def find_frontdoor_adjustment(self, x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]],
-                               restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None) -> Tuple[SymbolContainer]:
+                                restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
+                                latex:bool=False) -> Tuple[SymbolContainer]:
         """
         Find a frontdoor adjustment set for X -> Y
         """
@@ -376,6 +477,10 @@ class Adjustments(ABC):
         val = self._list_frontdoor_z_sets(x_set, y_set, z, z_pot, included_set, restricted_set)
         
         if val:
+            
+            if latex:
+                return self.get_frontdoor_adjustment_formula(x_set,y_set,val[0],val[1],val[2])
+            
             return tuple(SymbolContainer(val_set, self.syn) for val_set in val)
         
         return None
@@ -397,7 +502,6 @@ class Adjustments(ABC):
         
         z_pot = {step for path in pcp for step in path[1:-1]}
         z = set()
-        included_set = set()
         
         z_pot &= restricted_set
         
@@ -407,10 +511,13 @@ class Adjustments(ABC):
         
         for z in utils.powerset(z_pot):
               for xz in utils.powerset(restricted_set):
-                  for zy in utils.powerset(restricted_set - xz):
-                      if self.is_frontdoor_adjustment(x_set, y_set, z, xz, zy):
-                          valid_sets.append((z, xz, zy))
-                          valid_sets[-1] = tuple(SymbolContainer(val_set, self.syn) for val_set in valid_sets[-1])
+                  for zy in utils.powerset(restricted_set):
+                    if (xz & zy): # Must be disjoint
+                        continue
+                      
+                    if self.is_frontdoor_adjustment(x_set, y_set, z, xz, zy):
+                        valid_sets.append((z, xz, zy))
+                        valid_sets[-1] = tuple(SymbolContainer(val_set, self.syn) for val_set in valid_sets[-1])
                           
         if len(valid_sets) > 0:
             return valid_sets

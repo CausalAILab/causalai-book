@@ -120,7 +120,7 @@ class SymbolicSCM:
 
         self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
 
-        self.graph = ReadOnly(CausalGraph.from_scm(self), banned_attrs = [])
+        self.graph = CausalGraph.from_scm(self)
 
     def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
         """
