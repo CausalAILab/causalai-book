@@ -6,8 +6,8 @@ import sympy as sp
 
 import networkx as nx
 
-import causal_graph.utils as utils
-from symbol_container import SymbolContainer
+import src.causal_graph.utils as utils
+from src.return_classes import SymbolContainer
 
 
 

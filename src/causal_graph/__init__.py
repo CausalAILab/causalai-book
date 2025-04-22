@@ -7,15 +7,15 @@ import networkx as nx
 from graphviz import Source
 
 
-from symbol_container import SymbolContainer
+from src.return_classes import SymbolContainer
 
-from causal_graph.display import Display
-from causal_graph.dsep import DSeparation
-from causal_graph.adjustments import Adjustments
-from causal_graph.do_calc import DoCalc
-from causal_graph.accessors import Accessors
+from src.causal_graph.display import Display
+from src.causal_graph.dsep import DSeparation
+from src.causal_graph.adjustments import Adjustments
+from src.causal_graph.do_calc import DoCalc
+from src.causal_graph.accessors import Accessors
 
-import causal_graph.utils as utils
+import src.causal_graph.utils as utils
 
 from IPython.display import display
 

@@ -1,10 +1,14 @@
 from typing import Dict, Optional, Set, Union
+import uuid
+
+
 from sympy import Symbol, Expr
 import sympy as sp
 
 from IPython.display import Latex
 
-from global_utils.latex_utils import format_set, build_prob_exp
+from src.global_utils import format_set, build_prob_exp
+
 
 
 
@@ -71,30 +75,12 @@ class Pr(Symbol):
         Expr
             A symbolic expression representing the probabilistic event.
         """
-        if isinstance(event, dict):
-            ev_name = ",".join(f"{k.name}={v}" for k, v in event.items())
-        else:
-            ev_name = ",".join(s.name for s in event)
         
-        if given:
-            if isinstance(given, dict):
-                cond_name = ",".join(f"{k.name}={v}" for k, v in given.items())
-            else:
-                cond_name = ",".join(s.name for s in given)
-            name = f"P({ev_name}|{cond_name})"
-        else:
-            name = f"P({ev_name})"
         
-        if do:
-            if isinstance(do, dict):
-                do_name = ",".join(f"{k.name}={v}" for k, v in do.items())
-            else:
-                do_name = ",".join(s.name for s in do)
-            name = f"P({ev_name}|do({do_name}))"
-        else:
-            name = f"P({ev_name})"
+        _id = uuid.uuid4().hex
         
-        prob = super().__new__(cls, name)
+        prob = super().__new__(cls, f"Pr_{_id}")
+        prob._id = f"Pr_{_id}"
         prob._event_obj = event
         prob._condition_obj = given
         prob._do_obj = do
@@ -153,6 +139,18 @@ class Pr(Symbol):
             The LaTeX string representation of the probabilistic event for display.
         """
         return f"${self._latex()}$"
+    
+    
+    def get_id(self) -> str:
+        """
+        Returns the unique identifier of the probabilistic event.
+        
+        Returns
+        -------
+        str
+            The unique identifier of the probabilistic event.
+        """
+        return self._id
 
     def get_event(self) -> Union[Dict[Symbol, Union[int, Symbol]], Set[Symbol]]:
         """

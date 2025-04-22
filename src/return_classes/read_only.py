@@ -2,6 +2,11 @@
 
 
 class ReadOnly:
+    """
+    A class that wraps an object and makes its attributes read-only.
+    """
+    
+    
     def __init__(self, obj, banned_attrs = []):
         self._obj = obj
         self._banned_attrs = banned_attrs

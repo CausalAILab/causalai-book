@@ -5,7 +5,7 @@ import sympy as sp
 import networkx as nx
 
 
-from symbol_container import SymbolContainer
+from src.return_classes import SymbolContainer
 
 
 

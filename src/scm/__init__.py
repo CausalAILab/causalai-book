@@ -9,10 +9,10 @@ import pandas as pd
 import sympy as sp
 from IPython.display import Latex
 
-from query import Pr
-from symbol_container import SymbolContainer
+from src import Pr
+from src.return_classes import SymbolContainer
 
-from causal_graph import CausalGraph
+from src import CausalGraph
 
 
 
@@ -301,7 +301,6 @@ class SymbolicSCM:
         """
         
         output = expr
-        scm = self
 
         # Check if the expression contains inequality operators
         inequality_expr = None
@@ -310,28 +309,26 @@ class SymbolicSCM:
                 inequality_expr = True
                 break
 
-        for pr in expr.atoms(sp.Symbol):
-            if isinstance(pr, Pr):
-                if isinstance(pr.get_event(), dict):
-                    if pr.get_action():
-                        do_scm = self.do(pr.get_action())
-                        scm = do_scm
+        for pr in expr.atoms(Pr):
+            if isinstance(pr.get_event(), dict):
+                if pr.get_action():
+                    self.do(pr.get_action())
 
-                    output = output.subs(pr, scm.query(pr.get_event(), pr.get_condition()))
+                output = output.subs(pr, self.query(pr.get_event(), pr.get_condition()))
 
         # Prepare LaTeX output
         if latex:
             pr_syms = [p for p in expr.atoms(sp.Symbol) if isinstance(p, Pr)]
-            symbol_names = {p: p._latex() for p in pr_syms}
+            symbol_names = {p.get_id(): p._latex() for p in pr_syms}
             
             # If it's an inequality, modify LaTeX output to show comparison
             if inequality_expr:
-                return Latex(f"$({sp.latex(expr, symbol_names=symbol_names)}) = \\text{{{output}}}$")
+                return Latex(f"$({sp.latex(expr, symbol_names=symbol_names,order=None)}) = \\text{{{output}}}$")
 
             # Regular LaTeX output for non-inequality expressions
-            return Latex(f"${sp.latex(expr, symbol_names=symbol_names)} \\approx {output:.{self.precision}g}$")
+            return Latex(f"${sp.latex(expr, symbol_names=symbol_names, order=None)} \\approx {float(output):.{self.precision}g}$")
 
-        return output
+        return float(output)
 
 
     def query(
@@ -375,7 +372,7 @@ class SymbolicSCM:
         if given is None:
             given = {}
         
-        
+        assert isinstance(x,dict), "Did you mean to use query_exp()?"
         
         assert all(k in self.syn or k in self._counterfactuals for k in x), (
             x,
