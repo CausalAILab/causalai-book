@@ -9,9 +9,8 @@ import pandas as pd
 import sympy as sp
 from IPython.display import Latex
 
+from query import Pr
 from symbol_container import SymbolContainer
-
-from read_only import ReadOnly
 
 from causal_graph import CausalGraph
 
@@ -279,11 +278,66 @@ class SymbolicSCM:
 
         pt = self.get_probability_table()
         return pt.sample(n=n, weights="probability", replace=True)
+    
+    
+    def query_exp(self, expr: sp.Expr, latex: bool = False) -> Union[float, Latex]:
+        """
+        Query the probability of an event given some conditions.
+
+        Parameters
+        ----------
+        expr : sp.Expr
+            A sympy expression representing the event of interest.
+        latex : bool, optional
+            A flag indicating whether to return the result as a LaTeX object.
+            Defaults to False.
+
+        Returns
+        -------
+        Union[float, Latex]
+            The probability of the event specified by `expr`. If `latex` is True,
+            returns a LaTeX object representing the probability.
+
+        """
+        
+        output = expr
+        scm = self
+
+        # Check if the expression contains inequality operators
+        inequality_expr = None
+        for atom in expr.atoms(sp.Rel):
+            if atom.is_Relational:  # This checks for relational (inequality) expressions
+                inequality_expr = True
+                break
+
+        for pr in expr.atoms(sp.Symbol):
+            if isinstance(pr, Pr):
+                if isinstance(pr.get_event(), dict):
+                    if pr.get_action():
+                        do_scm = self.do(pr.get_action())
+                        scm = do_scm
+
+                    output = output.subs(pr, scm.query(pr.get_event(), pr.get_condition()))
+
+        # Prepare LaTeX output
+        if latex:
+            pr_syms = [p for p in expr.atoms(sp.Symbol) if isinstance(p, Pr)]
+            symbol_names = {p: p._latex() for p in pr_syms}
+            
+            # If it's an inequality, modify LaTeX output to show comparison
+            if inequality_expr:
+                return Latex(f"$({sp.latex(expr, symbol_names=symbol_names)}) = \\text{{{output}}}$")
+
+            # Regular LaTeX output for non-inequality expressions
+            return Latex(f"${sp.latex(expr, symbol_names=symbol_names)} \\approx {output:.{self.precision}g}$")
+
+        return output
+
 
     def query(
         self,
         x: Dict[sp.Symbol, int],
-        given: Dict[sp.Symbol, int] = {},
+        given: Dict[sp.Symbol, int] = None,
         latex: bool = False,
     ) -> Union[float, Latex]:
         """
@@ -317,6 +371,12 @@ class SymbolicSCM:
             - All keys in `given` are in `self.syn`.
             - The keys in `x` and `given` are disjoint.
         """
+        
+        if given is None:
+            given = {}
+        
+        
+        
         assert all(k in self.syn or k in self._counterfactuals for k in x), (
             x,
             self.syn,

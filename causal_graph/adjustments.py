@@ -166,16 +166,16 @@ class Adjustments(ABC):
             z_latex = utils.format_set(z_set)
             given_latex = utils.format_set(given_set)
             
-            lhs = utils.build_conditional_set(y_latex, r'\text{do}(' + x_latex + r')', given_latex)
+            lhs = utils.build_prob_exp([y_latex], [r'do(' + x_latex + r')', given_latex])
             
             if len(z_set) > 0:
                 rhs = (
                     r'\sum_{'+ z_latex + r'} ' +
-                    utils.build_conditional_set(y_latex, x_latex, z_latex, given_latex) + ' ' +
-                    utils.build_conditional_set(z_latex, given_latex)
+                    utils.build_prob_exp([y_latex], [x_latex, z_latex, given_latex]) + ' ' +
+                    utils.build_prob_exp([z_latex], [given_latex])
                 )
             else:
-                rhs = utils.build_conditional_set(y_latex, x_latex, given_latex)
+                rhs = utils.build_prob_exp([y_latex], [x_latex, given_latex])
                 
             return Latex(f"${lhs} = {rhs}$")
             
@@ -364,7 +364,7 @@ class Adjustments(ABC):
             
         
         if self.is_frontdoor_adjustment(x_set,y_set,z_set,xz_set,zy_set):
-            lhs = utils.build_conditional_set(y_latex, r'\text{do}(' + x_latex + r')')
+            lhs = utils.build_prob_exp([y_latex], [r'do(' + x_latex + r')'])
             
             if len(z_set) > 0:
                 z_sum = r'\sum_{'+ z_latex + r'} '
@@ -384,11 +384,11 @@ class Adjustments(ABC):
                 
             rhs = (
                 z_sum + xz_sum +
-                utils.build_conditional_set(y_latex, x_latex, xz_latex) +
-                (utils.build_joint_set(xz_latex) if len(xz_set) > 0 else '') +
+                utils.build_prob_exp([y_latex], [x_latex, xz_latex]) +
+                (utils.build_prob_exp([xz_latex]) if len(xz_set) > 0 else '') +
                 zy_sum + 
-                utils.build_conditional_set(y_latex,"x\'",z_latex, zy_latex) +
-                utils.build_joint_set("x\'",zy_latex)
+                utils.build_prob_exp([y_latex],["x'",z_latex, zy_latex]) +
+                utils.build_prob_exp(["x'"],[zy_latex])
             )
             
             
