@@ -5,7 +5,7 @@ import sympy as sp
 
 import networkx as nx
 
-from typing import List, Set, Dict, Tuple, Union
+from typing import List, Optional, Set, Dict, Tuple, Union
 
 from causal_graph.dsep import DSeparation
 from causal_graph.accessors import Accessors
@@ -50,7 +50,21 @@ class Adjustments(ABC):
     def get_adjustment_backdoor_graph(self, x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]],
                                       drop_z:Union[sp.Symbol, Set[sp.Symbol]]=None):
         """
-        Get the conditional backdoor graph for X -> Y given the variables
+        Construct the backdoor-adjustment graph for estimating P(Y|do(X)).
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol]]
+            Effect variable(s).
+        drop_z : Union[sp.Symbol, Set[sp.Symbol]], optional
+            Variable(s) to remove from the graph, by default None.
+
+        Returns
+        -------
+        Adjustments
+            A new Adjustments instance representing the truncated graph.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -75,7 +89,19 @@ class Adjustments(ABC):
         return graph
 
     def get_backdoor_graph(self, x:Union[sp.Symbol, Set[sp.Symbol]]):
-        
+        """
+        Construct the backdoor graph by removing edges out of X.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+
+        Returns
+        -------
+        Adjustments
+            A new Adjustments instance with edges from X removed.
+        """
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
 
         graph = self.__class__(self.v,
@@ -90,7 +116,21 @@ class Adjustments(ABC):
     def get_frontdoor_graph(self, x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]],
                             z:Union[sp.Symbol, Set[sp.Symbol]]):
         """
-        Get the frontdoor graph for X -> Y given the variables
+        Construct the frontdoor‐adjustment graph for mediators Z.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol]]
+            Effect variable(s).
+        z : Union[sp.Symbol, Set[sp.Symbol]]
+            Mediator variable(s).
+
+        Returns
+        -------
+        Adjustments
+            Intersection of backdoor graphs for X→Z and Z→Y.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -111,7 +151,25 @@ class Adjustments(ABC):
                                drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                latex:bool=False):
         """
-        Check if X is a backdoor adjustment for Y given the variables
+        Check whether Z satisfies the backdoor criterion for estimating P(Y|do(X)).
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment set, by default None.
+        drop_z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Variables to exclude, by default None.
+        latex : bool, optional
+            If True, return LaTeX formula instead of boolean, by default False.
+
+        Returns
+        -------
+        bool or Latex
+            True if Z is a valid backdoor adjustment; if `latex`, return the corresponding formula.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -147,7 +205,23 @@ class Adjustments(ABC):
                                         z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                         given:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
         """
-        Get the backdoor adjustment formula for X -> Y given the variables
+        Return the symbolic backdoor‐adjustment formula P(Y|do(X),…) = …
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment set, by default None.
+        given : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Additional conditioning, by default None.
+
+        Returns
+        -------
+        Optional[Latex]
+            LaTeX formula if adjustment holds, else None.
         """
 
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -186,8 +260,23 @@ class Adjustments(ABC):
         
     def _forbidden_set(self, z0, do_graph, pcp):
         """
-        Check if there is a forbidden set between X and Y
+        Identify forbidden variables that lie on causal paths.
+
+        Parameters
+        ----------
+        z0 : Set[sp.Symbol]
+            Candidate adjustment variables.
+        do_graph : Adjustments
+            Graph after do‐operation.
+        pcp : list of lists
+            Proper causal paths from X to Y.
+
+        Returns
+        -------
+        Set[sp.Symbol]
+            Variables that cannot be included in adjustment.
         """
+        
         for path in pcp:
             for step in path[1:]:
                 w_desc = set(do_graph.get_descendants(step,include_self=True))
@@ -198,12 +287,52 @@ class Adjustments(ABC):
         
     def _exists_sep(self, x, y, z0, bd_graph):
         """
-        Check if there is a separation between X and Y given Z
+        Test for d‐separation in the backdoor graph.
+
+        Parameters
+        ----------
+        x : Set[sp.Symbol]
+            Cause variables.
+        y : Set[sp.Symbol]
+            Effect variables.
+        z0 : Set[sp.Symbol]
+            Conditioning variables.
+        bd_graph : Adjustments
+            Backdoor graph.
+
+        Returns
+        -------
+        bool
+            True if Z0 d‐separates X and Y.
         """
 
         return bd_graph.is_d_separator(x, y, z0)
     
     def _list_seps(self, x, y, included, restricted, bd_graph,drop_z=None):
+        
+        """
+        Recursively search for a valid backdoor adjustment set.
+
+        Parameters
+        ----------
+        x : Set[sp.Symbol]
+            Cause variables.
+        y : Set[sp.Symbol]
+            Effect variables.
+        included : Set[sp.Symbol]
+            Already included adjustment variables.
+        restricted : Set[sp.Symbol]
+            Remaining candidates.
+        bd_graph : Adjustments
+            Backdoor graph.
+        drop_z : Set[sp.Symbol], optional
+            Variables to exclude, by default None.
+
+        Returns
+        -------
+        Optional[Set[sp.Symbol]]
+            A valid adjustment set, or None.
+        """
         
         z0 = set(self.get_ancestors(x | y | included, include_self=True)) & restricted
         
@@ -231,9 +360,29 @@ class Adjustments(ABC):
                                included:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                drop_z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
-                               latex:bool=False) -> SymbolContainer:
+                               latex:bool=False) -> Optional[SymbolContainer]:
         """
-        Find a backdoor adjustment set for X -> Y
+        Find one backdoor adjustment set for X → Y.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        included : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Variables that must be included, by default None.
+        restricted : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Candidates for adjustment, by default None.
+        drop_z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Variables to exclude, by default None.
+        latex : bool, optional
+            If True, return formula, by default False.
+
+        Returns
+        -------
+        Optional[SymbolContainer]
+            An adjustment set container or None.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -275,7 +424,25 @@ class Adjustments(ABC):
                                y:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
                                included:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None) -> List[SymbolContainer]:
-        
+        """
+        Enumerate all backdoor adjustment sets for X → Y.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        included : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Variables that must be included, by default None.
+        restricted : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Candidates for adjustment, by default None.
+
+        Returns
+        -------
+        Optional[List[SymbolContainer]]
+            A list of all valid adjustment sets, or None.
+        """
         
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -315,7 +482,27 @@ class Adjustments(ABC):
                                zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                latex:bool=False):
         """
-        Check if X is a frontdoor adjustment for Y given the variables
+        Check whether frontdoor conditions hold for mediator Z, adjustment set X→Z, and adjustment set Z→Y.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Mediator set, by default None.
+        xz : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment set for X→Z, by default None.
+        zy : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment set for Z→Y, by default None.
+        latex : bool, optional
+            If True, return formula, by default False.
+
+        Returns
+        -------
+        bool or Latex
+            True if frontdoor holds; if `latex`, return the formula.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -345,6 +532,28 @@ class Adjustments(ABC):
                                         z:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                         xz:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                         zy:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None):
+        
+        """
+        Return symbolic frontdoor‐adjustment formula.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            Effect variable(s).
+        z : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Mediator set, by default None.
+        xz : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment for X→Z, by default None.
+        zy : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Adjustment for Z→Y, by default None.
+
+        Returns
+        -------
+        Optional[Latex]
+            LaTeX formula if frontdoor holds, else None.
+        """
                                             
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
         y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list,SymbolContainer)) else {y})}
@@ -402,7 +611,29 @@ class Adjustments(ABC):
     
     
     def _list_frontdoor_z_sets(self,x,y,z, z_pot, included,restricted):
-        
+        """
+        Recursively search for a frontdoor triple (Z, XZ, ZY).
+
+        Parameters
+        ----------
+        x : Set[sp.Symbol]
+            Cause variables.
+        y : Set[sp.Symbol]
+            Effect variables.
+        z : Set[sp.Symbol]
+            Current mediator set.
+        z_pot : Set[sp.Symbol]
+            Potential mediators.
+        included : Set[sp.Symbol]
+            Already included variables.
+        restricted : Set[sp.Symbol]
+            Remaining candidates.
+
+        Returns
+        -------
+        Optional[Tuple[Set[sp.Symbol], Set[sp.Symbol], Set[sp.Symbol]]]
+            A tuple (Z, XZ, ZY) or None.
+        """
         
         z1 = self.find_backdoor_adjustment(x, z, included, restricted)
         z2 = self.find_backdoor_adjustment(z, y, included, restricted, drop_z=x)
@@ -455,8 +686,25 @@ class Adjustments(ABC):
     def find_frontdoor_adjustment(self, x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]],
                                 restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None,
                                 latex:bool=False) -> Tuple[SymbolContainer]:
+        
         """
-        Find a frontdoor adjustment set for X -> Y
+        Find one valid frontdoor adjustment triple (Z, XZ, ZY).
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol]]
+            Effect variable(s).
+        restricted : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Candidate variables, by default None.
+        latex : bool, optional
+            If True, return formula, by default False.
+
+        Returns
+        -------
+        Optional[Tuple[SymbolContainer, SymbolContainer, SymbolContainer]]
+            A tuple of adjustment sets or None.
         """
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
@@ -491,9 +739,26 @@ class Adjustments(ABC):
 
     def find_all_frontdoor_adjustments(self, x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]],
                                restricted:Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]=None) -> List[Tuple[SymbolContainer]]:
+        
         """
-        Find all frontdoor adjustment sets for X -> Y
+        Enumerate all frontdoor adjustment triples (Z, XZ, ZY).
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Cause variable(s).
+        y : Union[sp.Symbol, Set[sp.Symbol]]
+            Effect variable(s).
+        restricted : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            Candidate variables, by default None.
+
+        Returns
+        -------
+        Optional[List[Tuple[SymbolContainer, SymbolContainer, SymbolContainer]]]
+            List of all valid adjustment triples or None.
         """
+        
+        
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list,SymbolContainer)) else {x})}
         y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list,SymbolContainer)) else {y})}
         restricted_set = {self.syn.get(restricted_val, restricted_val) for restricted_val in (restricted if isinstance(restricted, (set, list,SymbolContainer)) else {restricted})} if restricted else set(self.v) - x_set - y_set

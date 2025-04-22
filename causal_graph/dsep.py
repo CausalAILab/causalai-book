@@ -243,7 +243,8 @@ class DSeparation(ABC):
     
     def find_all_proper_causal_paths(self,x:Union[sp.Symbol, Set[sp.Symbol]], y:Union[sp.Symbol, Set[sp.Symbol]], full_path:bool=True) -> List[SymbolContainer]:
         """
-        Find all proper causal paths between X and Y.
+        Find all proper causal paths between X and Y, which are defined 
+        as causal paths from X to Y that do not pass through any of the nodes in X or Y.
         
         Parameters
         ----------

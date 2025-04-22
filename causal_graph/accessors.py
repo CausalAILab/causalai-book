@@ -1,12 +1,13 @@
-
+from abc import ABC, abstractmethod
+from typing import List, Set, Union
 
 import sympy as sp
 import networkx as nx
-from abc import ABC, abstractmethod
 
-from typing import List, Set, Union
 
 from symbol_container import SymbolContainer
+
+
 
 
 class Accessors(ABC):

@@ -20,61 +20,132 @@ import causal_graph.utils as utils
 from IPython.display import display
 
 
-class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
+class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
     """
-    _summary_
+    Representation of a causal graph combining directed, bidirected, d‑separation,
+    adjustment criteria, do‑calculus, and display functionality.
 
     Parameters
     ----------
-    DSeparation : _type_
-        _description_
-    Adjustments : _type_
-        _description_
-    DoCalc : _type_
-        _description_
-    Display : _type_
-        _description_
-
-    Returns
-    -------
-    _type_
-        _description_
+    v : Optional[List[sp.Symbol]]
+        List of graph nodes (endogenous variables). Defaults to empty list.
+    directed_edges : Optional[List[Tuple[sp.Symbol, sp.Symbol]]]
+        List of directed edges (X → Y). Defaults to none.
+    bidirected_edges : Optional[List[Tuple[sp.Symbol, sp.Symbol]]]
+        List of bidirected edges (X ↔ Y). Defaults to none.
+    syn : Optional[Dict[sp.Symbol, sp.Symbol]]
+        Mapping from each variable to its counterfactual synonym. Defaults to none.
     """
-    
+
     @property
-    def de_graph(self):
+    def de_graph(self) -> nx.DiGraph:
+        """
+        Directed causal graph.
+
+        Returns
+        -------
+        nx.DiGraph
+            A directed acyclic graph whose edges represent direct causal relationships.
+        """
         return self._de
-    
+
     @property
-    def be_graph(self):
+    def be_graph(self) -> nx.Graph:
+        """
+        Bidirected causal graph.
+
+        Returns
+        -------
+        nx.Graph
+            An undirected graph whose edges represent unobserved confounding between variables.
+        """
         return self._be
-    
+
     @property
-    def combined_graph(self):
+    def combined_graph(self) -> nx.DiGraph:
+        """
+        Combined causal graph.
+
+        Returns
+        -------
+        nx.DiGraph
+            A directed graph merging directed edges (from endogenous variables) and
+            bidirected edges (from unobserved confounding) using instantiated exogenous nodes.
+        """
         return self._cdg
 
     @property
-    def v(self):
+    def v(self) -> SymbolContainer:
+        """
+        Variables in the graph.
+
+        Returns
+        -------
+        SymbolContainer
+            Container of all endogenous variable symbols in the causal graph.
+        """
         return self._v
-    
+
     @property
-    def syn(self):
-        # Mapping from a symbol to its counterfactual variant
+    def syn(self) -> Dict[sp.Symbol, sp.Symbol]:
+        """
+        Synonym mapping.
+
+        Returns
+        -------
+        Dict[sp.Symbol, sp.Symbol]
+            Maps each variable to its counterfactual or synonymous symbol.
+        """
         return self._syn
-    
+
     @property
-    def cc(self):
-        return self._cc
+    def cc(self) -> List[Set[sp.Symbol]]:
+        """
+        Connected components of the bidirected graph.
+
+        Returns
+        -------
+        List[Set[sp.Symbol]]
+            A list of sets, each representing a connected component under bidirected edges.
+        """
+        return list(self._cc)
+
 
 
     def from_file(self, path:str) -> None:
-        "Instantiate from a prestructured .cg file"
+        
+        # TODO
+        
+        """
+        Instantiate a CausalGraph from a prestructured .cg file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the .cg file that describes the causal graph.
+
+        Returns
+        -------
+        None
+        """
         pass
     
     
     @classmethod
     def from_scm(cls, scm):
-        "Instantiate from a SymbolicSCM object"
+        """
+        Create a CausalGraph from a SymbolicSCM object.
+
+        Parameters
+        ----------
+        scm : SymbolicSCM
+            A symbolic structural causal model.
+
+        Returns
+        -------
+        CausalGraph
+            A new causal graph instance derived from the SCM.
+        """
         
         collection = {} # Dictionary collecting the endogenous variables each exogenous variable affects
         
@@ -93,9 +164,9 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
                     
         for v_list in collection.values():
             if len(v_list) > 1:
-                for i in range(len(v_list)):
-                    for j in range(i+1,len(v_list)):
-                        be.append((v_list[i],v_list[j]))
+                for i,v_i in enumerate(v_list):
+                    for v_j in v_list[i+1:]:
+                        be.append((v_i,v_j))
                     
         
         
@@ -104,6 +175,27 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
 
     def __init__(self, v:Optional[List[sp.Symbol]] = None, directed_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None,
                  bidirected_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None, syn:Optional[Dict[sp.Symbol,sp.Symbol]] = None):
+        """
+        Initialize a CausalGraph with nodes and edges.
+
+        Parameters
+        ----------
+        v : Optional[List[sp.Symbol]]
+            List of endogenous variables (nodes). Defaults to empty list.
+        directed_edges : Optional[List[Tuple[sp.Symbol, sp.Symbol]]]
+            List of directed edges (X → Y). Defaults to [], must not form a cycle.
+        bidirected_edges : Optional[List[Tuple[sp.Symbol, sp.Symbol]]]
+            List of bidirected edges (X ↔ Y). Defaults to [], no self‑loops.
+        syn : Optional[Dict[sp.Symbol, sp.Symbol]]
+            Mapping from each variable to its counterfactual synonym. Defaults to {}.
+
+        Raises
+        ------
+        AssertionError
+            If any directed edge forms a cycle or refers to unknown nodes,
+            or if any bidirected edge is a self‑loop or refers to unknown nodes.
+        """
+        
         
         v = v or []
         directed_edges = directed_edges or []
@@ -131,7 +223,7 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
         self._v = SymbolContainer(v,syn)
         self._de = nx.DiGraph()
         self._be = nx.Graph()
-        self._cdg = nx.MultiDiGraph()
+        self._cdg = nx.DiGraph()
         self._syn = dict(syn)
         self._cc = nx.connected_components(self.be_graph)
         self._interventions = {}
@@ -147,7 +239,24 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
         
     def __and__(self, other):
         """
-        Combine two causal graphs
+        Compute the intersection of two causal graphs.
+
+        Parameters
+        ----------
+        other : CausalGraph
+            Another causal graph with the same variable set.
+
+        Returns
+        -------
+        CausalGraph
+            A new graph containing only edges present in both graphs.
+
+        Raises
+        ------
+        AssertionError
+            If `other` is not a CausalGraph.
+        ValueError
+            If the variable sets differ.
         """
         assert isinstance(other, CausalGraph), "Can only combine with another CausalGraph"
         
@@ -164,7 +273,24 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
     
     def __or__(self, other):
         """
-        Combine two causal graphs
+        Compute the union of two causal graphs.
+
+        Parameters
+        ----------
+        other : CausalGraph
+            Another causal graph with the same variable set.
+
+        Returns
+        -------
+        CausalGraph
+            A new graph containing all edges from either graph.
+
+        Raises
+        ------
+        AssertionError
+            If `other` is not a CausalGraph.
+        ValueError
+            If the variable sets differ.
         """
         assert isinstance(other, CausalGraph), "Can only combine with another CausalGraph"
         
@@ -182,7 +308,17 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
 
     def do_x(self, x:Union[sp.Symbol, Set[sp.Symbol]]):
         """
-        Do operation on the variable X
+        Apply a do‑intervention by removing incoming edges to X.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol]]
+            Variable or set of variables to intervene upon.
+
+        Returns
+        -------
+        CausalGraph
+            A new graph after performing the intervention.
         """
         # TODO: Potentially add subscript logic to the do operation
         
@@ -196,14 +332,25 @@ class CausalGraph(DSeparation,Adjustments,DoCalc,Display,Accessors):
     
     
     def draw(self, node_positions:Optional[Dict[sp.Symbol,Tuple[int,int]]] = None) -> None:
+        """
+        Render the causal graph using Graphviz.
+
+        Parameters
+        ----------
+        node_positions : Optional[Dict[sp.Symbol, Tuple[int,int]]], optional
+            Mapping of nodes to fixed (x, y) positions for layout. Defaults to None.
+
+        Returns
+        -------
+        None
+        """
+        
         if node_positions is None:
             node_positions = {}
         src = Source(self.convert_to_dot(node_positions=node_positions),engine="neato")
     
         return display(src)
 
-    def create_intervention(self, nodes:List[sp.Symbol]):
-        pass
 
 
     

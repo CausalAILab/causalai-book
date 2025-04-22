@@ -156,7 +156,7 @@ class SymbolicSCM:
     
     def _evaluate_symbolic_expression(self, expression: sp.Expr, u:Dict[sp.Symbol,int]) -> int:
         """
-        Evaluate the symbolic expression given the exogenous variables using the probability table.
+        Evaluate the symbolic expression through atoms deconstruction and value substitution.
 
         Parameters
         ----------
@@ -282,12 +282,12 @@ class SymbolicSCM:
     
     def query_exp(self, expr: sp.Expr, latex: bool = False) -> Union[float, Latex]:
         """
-        Query the probability of an event given some conditions.
+        Query the probability of an event given some conditions. Can accept both evaluable and inequality expressions. 
 
         Parameters
         ----------
         expr : sp.Expr
-            A sympy expression representing the event of interest.
+            A sympy expression consisting of Pr() objects and relevant operators.
         latex : bool, optional
             A flag indicating whether to return the result as a LaTeX object.
             Defaults to False.

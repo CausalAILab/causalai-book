@@ -29,8 +29,20 @@ class Display:
         return set(set())
     
     
-    def convert_to_dot(self, node_positions:Dict[sp.Symbol,Tuple[int,int]]={}):
-        
+    def convert_to_dot(self, node_positions: Dict[sp.Symbol, Tuple[int, int]] = {}) -> str:
+        """
+        Converts the graph to the DOT format for visualization.
+
+        Parameters
+        ----------
+        node_positions : Dict[sp.Symbol, Tuple[int, int]], optional
+            A dictionary mapping nodes to their positions in the graph (default is empty dictionary).
+
+        Returns
+        -------
+        str
+            A string representing the graph in DOT format.
+        """
         _node_positions = {
             self.syn.get(node, node): pos
             for node, pos in node_positions.items()
@@ -39,7 +51,6 @@ class Display:
         dot_str = "digraph G {\n  rankdir=LR;\n"
         
         for node in self.v:
-            
             pos = (
                 f'pos="{_node_positions[node][0]},{_node_positions[node][1]}!"'
                 if node in _node_positions.keys()
@@ -47,26 +58,17 @@ class Display:
             )
             fillcolor = "style=filled, fillcolor=lightgray"
             dot_str += f'  {node} [label="{node}" {pos} {fillcolor}];\n'
-            
+        
         style = f"penwidth=2.0"
-            
+        
         for edge in self.de_graph.edges:
-            arrow_type = (
-                f"[{style}]"
-            )
-            
+            arrow_type = f"[{style}]"
             dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'
-            
-            
+        
         for edge in self.be_graph.edges:
-
-            
-            arrow_type = (
-                f"[dir=both, style=dashed, constraint=false, splines=curved, {style}]"
-            )
-            
+            arrow_type = f"[dir=both, style=dashed, constraint=false, splines=curved, {style}]"
             dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'
-            
+        
         return dot_str + "}"
             
         
