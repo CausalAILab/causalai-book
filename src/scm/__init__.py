@@ -69,12 +69,12 @@ class SymbolicSCM:
         pu : Dict[sp.Symbol, List]
             Dictionary of probability distributions for exogenous variables.
         syn : Dict[sp.Symbol, sp.Symbol]
-            A dictionary mapping endogenous variables to their synonymous variables. Defaults to an empty dictionary.
+            A dictionary mapping endogenous variables to their affected variants. Defaults to an empty dictionary.
         precision : int
             Precision for displaying numerical results.
         _counterfactuals : Dict[sp.Symbol, object]
-            Dictionary for storing counterfactuals.
-        _interventions : Dict[int, object]
+            Dictionary for storing a lookup to counterfactual SCMs.
+        _intervention_memo : Dict[int, object]
             Memoization dictionary for storing interventions.
         _distributions : Dict[sp.Symbol, pd.DataFrame]
             Dictionary for storing calculated probability distributions.
@@ -114,7 +114,7 @@ class SymbolicSCM:
 
         # display precision
         self.precision = precision
-        self._interventions: Dict[int, SymbolicSCM] = {}
+        self._intervention_memo: Dict[int, SymbolicSCM] = {}
         self._counterfactuals: Dict[sp.Symbol, SymbolicSCM] = {k: self for k in self.v}
 
         self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
@@ -302,7 +302,7 @@ class SymbolicSCM:
         
         output = expr
 
-        # Check if the expression contains inequality operators
+
         inequality_expr = None
         for atom in expr.atoms(sp.Rel):
             if atom.is_Relational:  # This checks for relational (inequality) expressions
@@ -316,16 +316,14 @@ class SymbolicSCM:
 
                 output = output.subs(pr, self.query(pr.get_event(), pr.get_condition()))
 
-        # Prepare LaTeX output
+
         if latex:
             pr_syms = [p for p in expr.atoms(sp.Symbol) if isinstance(p, Pr)]
             symbol_names = {p.get_id(): p._latex() for p in pr_syms}
-            
-            # If it's an inequality, modify LaTeX output to show comparison
+
             if inequality_expr:
                 return Latex(f"$({sp.latex(expr, symbol_names=symbol_names,order=None)}) = \\text{{{output}}}$")
 
-            # Regular LaTeX output for non-inequality expressions
             return Latex(f"${sp.latex(expr, symbol_names=symbol_names, order=None)} \\approx {float(output):.{self.precision}g}$")
 
         return float(output)
@@ -402,6 +400,9 @@ class SymbolicSCM:
         return pt.query(query).probability.sum()
 
     def do(self, x: Dict[sp.Symbol, Union[sp.Expr, int, sp.Symbol]]) -> SymbolicSCM:
+        
+        # TODO: Revise to update _interventions with more accessible structure of interventions for causal graph
+        
         """
         Perform the do-operation on the structural causal model (SCM).
         The do-operation simulates an intervention where the values of certain variables
@@ -424,8 +425,8 @@ class SymbolicSCM:
         """
 
         key = hash(tuple(sorted(x.items(), key=lambda t: (str(t[0]), t[1]))))
-        if key in self._interventions:
-            return self._interventions[key]
+        if key in self._intervention_memo:
+            return self._intervention_memo[key]
 
 
         assert all(k in self.v for k in x), x
@@ -437,7 +438,7 @@ class SymbolicSCM:
         subscript = ",".join(f"{k}={x[k]}" for k in x)
         vs = {k: sp.Symbol(f"{{{k}}}_{{{subscript}}}") for k in self.v}
 
-        self._interventions[key] = scm = SymbolicSCM(
+        self._intervention_memo[key] = scm = SymbolicSCM(
             f={
                 vs[k]: (sp.sympify(x[k]) if k in x else v).subs(vs)
                 for k, v in self.f.items()

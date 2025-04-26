@@ -182,7 +182,7 @@ class Adjustments(ABC):
         
         bd_graph = self.get_adjustment_backdoor_graph(x_set,y_set,drop_z=drop_z)
         
-        do_graph = self.do_x(x_set)
+        do_graph = self.do(x_set)
         
         pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=True)
         
@@ -397,7 +397,7 @@ class Adjustments(ABC):
             return None
             
         bd_graph = self.get_adjustment_backdoor_graph(x_set,y_set,drop_z=drop_z)
-        do_graph = self.do_x(x_set)
+        do_graph = self.do(x_set)
         pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=True)
         
         forbidden = self._forbidden_set(restricted_set, do_graph, pcp)
@@ -456,7 +456,7 @@ class Adjustments(ABC):
             return None
         
         bd_graph = self.get_adjustment_backdoor_graph(x_set,y_set)
-        do_graph = self.do_x(x_set)
+        do_graph = self.do(x_set)
         pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=True)
         
         forbidden = self._forbidden_set(restricted_set, do_graph, pcp)

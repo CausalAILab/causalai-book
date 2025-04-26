@@ -58,6 +58,9 @@ class Accessors(ABC):
             A SymbolContainer containing the union of the parents of the given node(s).
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
         result = {p for n in nodes for p in self.de_graph.predecessors(n)}
         if include_self:
             result = result.union(nodes)
@@ -84,6 +87,9 @@ class Accessors(ABC):
             A SymbolContainer containing the union of the children of the given node(s).
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
         result = {c for n in nodes for c in self.de_graph.successors(n)}
         if include_self:
             result = result.union(nodes)
@@ -136,6 +142,9 @@ class Accessors(ABC):
             A SymbolContainer containing the union of the descendants of the given node(s).
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
         result = {d for n in nodes for d in nx.descendants(self.de_graph, n)}
         if include_self:
             result = result.union(nodes)
@@ -162,6 +171,9 @@ class Accessors(ABC):
             A SymbolContainer containing the union of the neighbors of the given node(s).
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
         result = {nbr for n in nodes for nbr in self.be_graph.neighbors(n)}
         if include_self:
             result = result.union(nodes)
@@ -187,8 +199,26 @@ class Accessors(ABC):
             A list of connected components as SymbolContainers.
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
         result = []
         for comp in self.cc:
             if comp & nodes:
                 result.append(SymbolContainer(comp,self.syn))
         return result
+    
+    
+    
+    def get_ctf_ancestors(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
+        
+        # TODO: Implement this method once chosen to represent do()s using separate object or modifications to symbols
+        
+        pass
+        
+        
+    def get_ctf_descendants(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
+        pass
+    
+    def get_ctf_parents(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
+        pass

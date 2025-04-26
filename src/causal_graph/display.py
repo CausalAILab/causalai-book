@@ -57,17 +57,17 @@ class Display:
                 else ""
             )
             fillcolor = "style=filled, fillcolor=lightgray"
-            dot_str += f'  {node} [label="{node}" {pos} {fillcolor}];\n'
+            dot_str += f'  "{node}" [label="{node}" {pos} {fillcolor}];\n'
         
         style = f"penwidth=2.0"
         
         for edge in self.de_graph.edges:
             arrow_type = f"[{style}]"
-            dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'
+            dot_str += f'  "{edge[0]}" -> "{edge[1]}" {arrow_type};\n'
         
         for edge in self.be_graph.edges:
             arrow_type = f"[dir=both, style=dashed, constraint=false, splines=curved, {style}]"
-            dot_str += f'  {edge[0]} -> {edge[1]} {arrow_type};\n'
+            dot_str += f'  "{edge[0]}" -> "{edge[1]}" {arrow_type};\n'
         
         return dot_str + "}"
             

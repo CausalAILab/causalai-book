@@ -170,7 +170,11 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
                     
         
         
-        return cls(list(scm.v),de,be)
+        g = cls(list(scm.v),de,be,scm.syn)
+        g._ctf_graphs = {k:sub_scm.graph for k,sub_scm in scm._counterfactuals.items() if sub_scm is not scm}
+        
+        
+        return g
         
 
     def __init__(self, v:Optional[List[sp.Symbol]] = None, directed_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None,
@@ -226,7 +230,6 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         self._cdg = nx.DiGraph()
         self._syn = dict(syn)
         self._cc = nx.connected_components(self.be_graph)
-        self._interventions = {}
 
         self.de_graph.add_nodes_from(v)
         self.be_graph.add_nodes_from(v)
@@ -235,6 +238,9 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         self.be_graph.add_edges_from(bidirected_edges)
         
         self._cdg = utils.combine_to_directed(self.de_graph,self.be_graph)
+        
+        self._intervention_memo = {}
+        self._ctf_graphs = {}
         
         
     def __and__(self, other):
@@ -306,7 +312,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         
     
 
-    def do_x(self, x:Union[sp.Symbol, Set[sp.Symbol]]):
+    def do(self, x:Union[sp.Symbol, Set[sp.Symbol]]):
         """
         Apply a do‑intervention by removing incoming edges to X.
 
@@ -320,13 +326,33 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         CausalGraph
             A new graph after performing the intervention.
         """
-        # TODO: Potentially add subscript logic to the do operation
         
         x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else [x])}
         
-        graph = self.__class__(self.v,
-                                [edge for edge in self.de_graph.edges if edge[1] not in x_set],
-                                [edge for edge in self.be_graph.edges if edge[0] not in x_set or edge[1] not in x_set])
+        key = hash(tuple(sorted(x_set, key=lambda s: str(s))))
+        if key in self._intervention_memo:
+            return self._intervention_memo[key]
+        
+        
+        assert all([x in self.v for x in x_set]), f"Cannot do intervention on {x_set} as it is not in the graph"
+
+        vs = {k: sp.Symbol(f"{{{k}}}_{{{utils.format_set(x_set)}}}") for k in self.v}
+        
+        self._intervention_memo[key] = graph = self.__class__(
+                                {vs[n] for n in self.v},
+                                [(vs[edge[0]], vs[edge[1]]) for edge in self.de_graph.edges if edge[1] not in x_set],
+                                [(vs[edge[0]], vs[edge[1]]) for edge in self.be_graph.edges if edge[0] not in x_set or edge[1] not in x_set],
+                                {**self.syn,**vs}
+                                )
+        
+        ctfs = {n: graph for n in graph.v}
+        assert set(ctfs).isdisjoint(self._ctf_graphs.keys()), (
+            ctfs,
+            self._ctf_graphs
+            
+        )
+        
+        self._ctf_graphs.update(ctfs)
 
         return graph
     
