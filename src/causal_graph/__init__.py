@@ -7,20 +7,23 @@ import networkx as nx
 from graphviz import Source
 
 
-from src.return_classes import SymbolContainer
+from src.return_classes.symbol_container import SymbolContainer
 
 from src.causal_graph.display import Display
 from src.causal_graph.dsep import DSeparation
 from src.causal_graph.adjustments import Adjustments
-from src.causal_graph.do_calc import DoCalc
+from src.causal_graph.ctf_calc import DoCalc
 from src.causal_graph.accessors import Accessors
+from src.causal_graph.ctf_network_methods import CtfNetworkMethods
 
 import src.causal_graph.utils as utils
 
 from IPython.display import display
 
+from src.sympy_classes.variable import Variable
 
-class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
+
+class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors, CtfNetworkMethods):
     """
     Representation of a causal graph combining directed, bidirected, d‑separation,
     adjustment criteria, do‑calculus, and display functionality.
@@ -50,7 +53,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         return self._de
 
     @property
-    def be_graph(self) -> nx.Graph:
+    def be_graph(self) -> nx.MultiGraph:
         """
         Bidirected causal graph.
 
@@ -85,6 +88,18 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
             Container of all endogenous variable symbols in the causal graph.
         """
         return self._v
+    
+    @property
+    def u(self) -> SymbolContainer:
+        """
+        Exogenous variables in the graph.
+
+        Returns
+        -------
+        SymbolContainer
+            Container of all exogenous variable symbols in the causal graph.
+        """
+        return self._u
 
     @property
     def syn(self) -> Dict[sp.Symbol, sp.Symbol]:
@@ -126,10 +141,12 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
 
         Returns
         -------
-        None
+        CausalGraph
+            A new causal graph instance derived from the SCM.
         """
         pass
     
+        
     
     @classmethod
     def from_scm(cls, scm):
@@ -170,7 +187,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
                     
         
         
-        g = cls(list(scm.v),de,be,scm.syn)
+        g = cls(list(scm.v),de,be)
         g._ctf_graphs = {k:sub_scm.graph for k,sub_scm in scm._counterfactuals.items() if sub_scm is not scm}
         
         
@@ -178,7 +195,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         
 
     def __init__(self, v:Optional[List[sp.Symbol]] = None, directed_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None,
-                 bidirected_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None, syn:Optional[Dict[sp.Symbol,sp.Symbol]] = None):
+                 bidirected_edges:Optional[List[Tuple[sp.Symbol,sp.Symbol]]] = None):
         """
         Initialize a CausalGraph with nodes and edges.
 
@@ -204,7 +221,6 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         v = v or []
         directed_edges = directed_edges or []
         bidirected_edges = bidirected_edges or []
-        syn = syn or {}
         
 
         for edge in bidirected_edges:
@@ -224,12 +240,19 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
 
         assert nx.is_directed_acyclic_graph(test_graph), "Directed edges cannot form a cycle"
         
-        self._v = SymbolContainer(v,syn)
+        self._v = SymbolContainer(v)
         self._de = nx.DiGraph()
-        self._be = nx.Graph()
+        self._be = nx.MultiGraph() # Nodes can share multiple edges
         self._cdg = nx.DiGraph()
-        self._syn = dict(syn)
+        
+        self._multiworld = True
+        
+        if all([var.interventions == self._v[0].interventions for var in self._v]):
+            self._multiworld = False
+                
+        self._syn = {Variable(n.main):n for n in self._v} if not self._multiworld else {}
         self._cc = nx.connected_components(self.be_graph)
+
 
         self.de_graph.add_nodes_from(v)
         self.be_graph.add_nodes_from(v)
@@ -237,10 +260,11 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         self.de_graph.add_edges_from(directed_edges)
         self.be_graph.add_edges_from(bidirected_edges)
         
-        self._cdg = utils.combine_to_directed(self.de_graph,self.be_graph)
+        self._cdg, u = utils.combine_to_directed(self.de_graph,self.be_graph)
+        self._u = SymbolContainer(u)
         
         self._intervention_memo = {}
-        self._ctf_graphs = {}
+        self._ctf_graphs = {node: self for node in self.v}
         
         
     def __and__(self, other):
@@ -271,8 +295,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         
         combined = self.__class__(self.v,
                                   set(self.de_graph.edges) & set(other.de_graph.edges),
-                                  set(self.be_graph.edges) & set(other.be_graph.edges),
-                                self.syn)
+                                  set(self.be_graph.edges) & set(other.be_graph.edges))
         
         return combined
     
@@ -306,7 +329,7 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         combined = self.__class__(self.v,
                                   set(self.de_graph.edges) | set(other.de_graph.edges),
                                   set(self.be_graph.edges) | set(other.be_graph.edges),
-                                  self.syn)
+                                  )
         
         return combined
         
@@ -327,37 +350,39 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
             A new graph after performing the intervention.
         """
         
-        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list)) else [x])}
+        x_set = x if isinstance(x, (set, list, dict)) else {x}
         
-        key = hash(tuple(sorted(x_set, key=lambda s: str(s))))
+        key = hash(tuple(sorted(x_set.items(), key=lambda x: (str(x[0]),str(x[1]))) if isinstance(x_set, dict) else sorted(x_set, key=lambda x: str(x))))
         if key in self._intervention_memo:
             return self._intervention_memo[key]
         
-        
-        assert all([x in self.v for x in x_set]), f"Cannot do intervention on {x_set} as it is not in the graph"
 
-        vs = {k: sp.Symbol(f"{{{k}}}_{{{utils.format_set(x_set)}}}") for k in self.v}
+        vs = {k: k.update_interventions(x_set) for k in self.v}
         
-        self._intervention_memo[key] = graph = self.__class__(
+        graph = self.__class__(
                                 {vs[n] for n in self.v},
                                 [(vs[edge[0]], vs[edge[1]]) for edge in self.de_graph.edges if edge[1] not in x_set],
-                                [(vs[edge[0]], vs[edge[1]]) for edge in self.be_graph.edges if edge[0] not in x_set or edge[1] not in x_set],
-                                {**self.syn,**vs}
+                                [(vs[edge[0]], vs[edge[1]]) for edge in self.be_graph.edges if edge[0] not in x_set or edge[1] not in x_set]
                                 )
         
         ctfs = {n: graph for n in graph.v}
-        assert set(ctfs).isdisjoint(self._ctf_graphs.keys()), (
+        """
+        assert set(ctfs).isdisjoint(self._ctf_graphs), (
             ctfs,
             self._ctf_graphs
-            
         )
+        """
         
         self._ctf_graphs.update(ctfs)
+        graph._ctf_graphs = self._ctf_graphs
+        
+        
+        self._intervention_memo[key] = graph
 
         return graph
     
     
-    def draw(self, node_positions:Optional[Dict[sp.Symbol,Tuple[int,int]]] = None) -> None:
+    def draw(self, node_positions:Optional[Dict[sp.Symbol,Tuple[int,int]]] = None, include_u:bool=False) -> None:
         """
         Render the causal graph using Graphviz.
 
@@ -373,7 +398,13 @@ class CausalGraph(DSeparation, Adjustments, DoCalc, Display, Accessors):
         
         if node_positions is None:
             node_positions = {}
-        src = Source(self.convert_to_dot(node_positions=node_positions),engine="neato")
+        
+        src = {}
+            
+        if include_u:
+            src = Source(self.convert_to_dot_combined_graph(node_positions=node_positions),engine="neato")
+        else:
+            src = Source(self.convert_to_dot(node_positions=node_positions),engine="neato")
     
         return display(src)
 

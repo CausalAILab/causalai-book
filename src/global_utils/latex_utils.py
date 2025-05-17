@@ -34,10 +34,10 @@ def format_set(symbols: Union[Dict[sp.Symbol, int], Set[sp.Symbol]], add_bracket
     
     if isinstance(symbols, dict):
         # If the input is a dictionary, extract the keys and values.
-        symbols_latex = ', '.join(f'{sp.latex(sym)} = {val}' for sym, val in symbols.items())
+        symbols_latex = ', '.join(f'{str(sym)} = {val}' if val is not None else f'{str(sym)}' for sym, val in symbols.items())
     else:
         # If the input is a set, convert each symbol to its LaTeX representation.
-        symbols_latex = ', '.join({sp.latex(sym) for sym in symbols})
+        symbols_latex = ', '.join({str(sym) for sym in symbols})
     
     if add_brackets:
         # Add brackets around the set.

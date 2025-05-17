@@ -42,6 +42,50 @@ class DSeparation(ABC):
     @abstractmethod
     def cc(self):
         pass
+    
+    
+    def is_ctf_d_separator(
+        self,
+        x: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
+        y: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
+        given: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]] = None
+    ) -> bool:
+        """
+        Checks if set X is d-separated from set Y given a set of variables in every distribution P_{***}
+        with the causal diagram G.
+
+        Parameters
+        ----------
+        x : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            _description_
+        y : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            _description_
+        given : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], optional
+            _description_, by default None
+
+        Returns
+        -------
+        bool
+            _description_
+        """
+        
+        x_set = {self.syn.get(x_val, x_val) for x_val in (x if isinstance(x, (set, list, SymbolContainer)) else {x})}
+        y_set = {self.syn.get(y_val, y_val) for y_val in (y if isinstance(y, (set, list, SymbolContainer)) else {y})}
+        
+        if given is None:
+            giv = set()
+        else:
+            giv = {self.syn.get(g, g) for g in (given if isinstance(given, (set, list, SymbolContainer)) else {given})}
+            
+        excluded_x = {self.apply_exclusion_var(x) for x in x_set}
+        excluded_y = {self.apply_exclusion_var(y) for y in y_set}
+        excluded_giv = {self.apply_exclusion_var(g) for g in giv}
+        
+        amwn = self.build_AMWN(x_set | y_set | giv)
+        
+        return amwn.is_d_separator(excluded_x, excluded_y, excluded_giv)
+        
+
 
     def is_d_separator(
         self,
@@ -182,7 +226,7 @@ class DSeparation(ABC):
                 
                 all_seps = all_seps & seps if len(all_seps) > 1 else seps
                 
-        return SymbolContainer(min(all_seps, key=len),self.syn)
+        return SymbolContainer(min(all_seps, key=len))
 
     def find_all_d_separators(
         self,
@@ -279,12 +323,12 @@ class DSeparation(ABC):
                         if step in x_set or step in y_set:
                             break
                     else:
-                        valid_paths.append(SymbolContainer(path,self.syn))
+                        valid_paths.append(SymbolContainer(path))
                         
                 if full_path:
                     all_paths.extend(valid_paths)
                 else:
-                    all_paths.extend([SymbolContainer(path[0:2],self.syn) for path in valid_paths])
+                    all_paths.extend([SymbolContainer(path[0:2]) for path in valid_paths])
                 
         return len(all_paths) > 0 and all_paths or None
 

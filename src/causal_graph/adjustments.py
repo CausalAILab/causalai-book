@@ -74,8 +74,8 @@ class Adjustments(ABC):
         trunc_pcp = self.find_all_proper_causal_paths(x_set, y_set, full_path=False)
         
         v = self.v
-        de_list = [edge for edge in self.de_graph.edges if SymbolContainer(edge,self.syn) not in trunc_pcp]
-        be_list = self.be_graph.edges
+        de_list = [edge for edge in self.de_graph.edges if SymbolContainer(edge) not in trunc_pcp]
+        be_list = self.be_graph.edges(keys=False)
         
         if len(drop_z_set) > 0:
             de_list = [edge for edge in de_list if edge[0] not in drop_z_set and edge[1] not in drop_z_set]
@@ -414,7 +414,7 @@ class Adjustments(ABC):
             if latex:
                 return self.get_backdoor_adjustment_formula(x_set,y_set,val)
             
-            return SymbolContainer(val, self.syn)
+            return SymbolContainer(val)
 
         return None
     
@@ -729,7 +729,7 @@ class Adjustments(ABC):
             if latex:
                 return self.get_frontdoor_adjustment_formula(x_set,y_set,val[0],val[1],val[2])
             
-            return tuple(SymbolContainer(val_set, self.syn) for val_set in val)
+            return tuple(SymbolContainer(val_set) for val_set in val)
         
         return None
         
@@ -782,7 +782,7 @@ class Adjustments(ABC):
                       
                     if self.is_frontdoor_adjustment(x_set, y_set, z, xz, zy):
                         valid_sets.append((z, xz, zy))
-                        valid_sets[-1] = tuple(SymbolContainer(val_set, self.syn) for val_set in valid_sets[-1])
+                        valid_sets[-1] = tuple(SymbolContainer(val_set) for val_set in valid_sets[-1])
                           
         if len(valid_sets) > 0:
             return valid_sets

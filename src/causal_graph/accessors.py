@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Set, Union
 
+from src.sympy_classes.variable import Variable
 import sympy as sp
 import networkx as nx
 
@@ -61,10 +62,10 @@ class Accessors(ABC):
         
         nodes = {self.syn.get(n, n) for n in nodes}
         
-        result = {p for n in nodes for p in self.de_graph.predecessors(n)}
+        result = {p for n in nodes for p in self._ctf_graphs.get(n,self).de_graph.predecessors(n)}
         if include_self:
             result = result.union(nodes)
-        return SymbolContainer(result, self.syn)
+        return SymbolContainer(result)
 
     def get_children(
         self, 
@@ -90,15 +91,16 @@ class Accessors(ABC):
         
         nodes = {self.syn.get(n, n) for n in nodes}
         
-        result = {c for n in nodes for c in self.de_graph.successors(n)}
+        result = {c for n in nodes for c in self._ctf_graphs.get(n,self).de_graph.successors(n)}
         if include_self:
             result = result.union(nodes)
-        return SymbolContainer(result, self.syn)
+        return SymbolContainer(result)
 
     def get_ancestors(
         self, 
         node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], 
-        include_self: bool = False
+        include_self: bool = False,
+        as_graph: bool = False
     ):
         """
         Return a SymbolContainer with the union of the ancestors of the given node(s).
@@ -116,15 +118,25 @@ class Accessors(ABC):
             A SymbolContainer containing the union of the ancestors of the given node(s).
         """
         nodes = set(node) if isinstance(node, (set, list)) else {node}
-        result = {a for n in nodes for a in nx.ancestors(self.de_graph, n)}
+        result = {a for n in nodes for a in nx.ancestors(self._ctf_graphs.get(n,self).de_graph, n)}
+        edges = [edge for n in nodes for edge in self._ctf_graphs.get(n,self).de_graph.edges(n) if edge[0] in result and edge[1] in result]
+        
         if include_self:
             result = result.union(nodes)
-        return SymbolContainer(result, self.syn)
+            
+        if as_graph:
+            return self.__class__(
+                v = result,
+                directed_edges = edges,
+            )
+            
+        return SymbolContainer(result)
 
     def get_descendants(
         self, 
         node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], 
-        include_self: bool = False
+        include_self: bool = False,
+        as_graph: bool = False
     ):
         """
         Return a SymbolContainer with the union of the descendants of the given node(s).
@@ -145,15 +157,25 @@ class Accessors(ABC):
         
         nodes = {self.syn.get(n, n) for n in nodes}
         
-        result = {d for n in nodes for d in nx.descendants(self.de_graph, n)}
+        result = {d for n in nodes for d in nx.descendants(self._ctf_graphs.get(n,self).de_graph, n)}
+        edges = [edge for n in nodes for edge in self._ctf_graphs.get(n,self).de_graph.edges(n) if edge[0] in result and edge[1] in result]
+        
         if include_self:
             result = result.union(nodes)
-        return SymbolContainer(result, self.syn)
+            
+        if as_graph:
+            return self.__class__(
+                v = result,
+                directed_edges = edges,
+            )
+            
+        return SymbolContainer(result)
 
     def get_neighbors(
         self, 
         node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], 
-        include_self: bool = False
+        include_self: bool = False,
+        as_graph: bool = False
     ):
         """
         Return a SymbolContainer with the union of the neighbors of the given node(s).
@@ -174,14 +196,23 @@ class Accessors(ABC):
         
         nodes = {self.syn.get(n, n) for n in nodes}
         
-        result = {nbr for n in nodes for nbr in self.be_graph.neighbors(n)}
+        result = {nbr for n in nodes for nbr in self._ctf_graphs.get(n,self).be_graph.neighbors(n)}
+        edges = [edge for n in nodes for edge in self._ctf_graphs.get(n,self).be_graph.edges(n, keys=False) if edge[0] in result and edge[1] in result]
         if include_self:
             result = result.union(nodes)
-        return SymbolContainer(result, self.syn)
+            
+        if as_graph:
+            return self.__class__(
+                v = result,
+                bidirected_edges = edges,
+            )
+            
+        return SymbolContainer(result)
 
     def get_connected_components(
         self, 
         node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]],
+        as_graph: bool = False
     ):
         """
         Return a SymbolContainer with the union of the connected components containing the given node(s).
@@ -203,22 +234,169 @@ class Accessors(ABC):
         nodes = {self.syn.get(n, n) for n in nodes}
         
         result = []
-        for comp in self.cc:
-            if comp & nodes:
-                result.append(SymbolContainer(comp,self.syn))
+        for n in nodes:
+            for comp in self._ctf_graphs.get(n,self).cc:
+                if comp & nodes:
+                    result.append(SymbolContainer(comp))
+                
+        if as_graph:
+            return [self.__class__(
+                v = comp,
+                bidirected_edges = [edge for edge in self.be_graph.edges(keys=False) if edge[0] in comp and edge[1] in comp],
+            ) for comp in result]
+                
         return result
+    
+    
+    def get_nodes(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]], as_graph: bool = False):
+        """
+        Fetch the counterfactual identity of a non-intervened node in the counterfactual graph.
+        
+        Parameters
+        ----------
+        node : Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]
+            A node or collection of nodes to be retrieved.
+        
+        Returns
+        -------
+        SymbolContainer
+            A SymbolContainer containing the given node(s).
+        """
+        nodes = set(node) if isinstance(node, (set, list)) else {node}
+        
+        nodes = {self.syn.get(n, n) for n in nodes}
+        
+        if as_graph:
+            return self.__class__(
+                v = nodes,
+                directed_edges = [edge for edge in self.de_graph.edges if edge[0] in nodes and edge[1] in nodes],
+                bidirected_edges = [edge for edge in self.be_graph.edges(keys=False) if edge[0] in nodes and edge[1] in nodes],
+            )
+        
+        return SymbolContainer(nodes)
     
     
     
     def get_ctf_ancestors(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
         
-        # TODO: Implement this method once chosen to represent do()s using separate object or modifications to symbols
+        node = set(node) if isinstance(node, (set, list)) else {node}
+        node = {self.syn.get(n, n) for n in node}
         
-        pass
+        ctf_ancestors = set()
+        
+        for n in node:
+            interventions = n.interventions.keys()
+            
+            if not interventions:
+                ctf_ancestors.update(self.get_ancestors(n, include_self=True))
+                continue
+            
+            do_graph = self._ctf_graphs.get(n,None)
+            
+            if do_graph is None:
+                raise ValueError(f"Node {n} not found in submodels with keys: {self._ctf_graphs.keys()}.")
+            
+            x = do_graph.get_nodes(list(interventions))
+            
+            anc = do_graph.get_ancestors(n, include_self=True) - x
+            
+            for a in anc:
+                
+                z = [val.main for val in (x & do_graph.get_ancestors(a, include_self=True))]
+                
+                modified_a = a.remove_interventions([i for i in interventions if str(i) not in z])
+                
+                ctf_ancestors.add(modified_a)
+        
+        # Eagerly generate graphs for new counterfactuals
+        for n in ctf_ancestors:
+            if self._ctf_graphs.get(n,None) is None:
+                self.do(n.interventions)
+
+                    
+                
+                
+        return SymbolContainer(ctf_ancestors)
+                        
+            
+
+        
         
         
     def get_ctf_descendants(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
-        pass
+        
+        node = set(node) if isinstance(node, (set, list)) else {node}
+        node = {self.syn.get(n, n) for n in node}
+        
+        ctf_descendants = set()
+        
+        for n in node:
+            interventions = n.interventions.keys()
+            
+            if not interventions:
+                ctf_descendants.update(self.get_descendants(n, include_self=True))
+                continue
+            
+            do_graph = self._ctf_graphs.get(n,None)
+            
+            if do_graph is None:
+                raise ValueError(f"Node {n} not found in submodels with keys: {self._ctf_graphs.keys()}.")
+            
+            x = do_graph.get_nodes(list(interventions))
+            
+            desc = do_graph.get_descendants(n, include_self=True) - x
+            
+            for d in desc:
+                
+                z = [val.main for val in (x & do_graph.get_descendants(d, include_self=True))]
+                
+                modified_d = d.remove_interventions([i for i in interventions if str(i) not in z])
+                
+                ctf_descendants.add(modified_d)
+                
+        # Eagerly generate graphs for new counterfactuals
+        for n in ctf_descendants:
+            if self._ctf_graphs.get(n,None) is None:
+                self.do(n.interventions)  
+
+                
+        return SymbolContainer(ctf_descendants)
     
     def get_ctf_parents(self, node: Union[sp.Symbol, Set[sp.Symbol], List[sp.Symbol]]):
-        pass
+        
+        node = set(node) if isinstance(node, (set, list)) else {node}
+        node = {self.syn.get(n, n) for n in node}
+        
+        ctf_parents = set()
+        
+        for n in node:
+            interventions = n.interventions.keys()
+            
+            if not interventions:
+                ctf_parents.update(self.get_parents(n, include_self=True))
+                continue
+            
+            do_graph = self._ctf_graphs.get(n,None)
+            
+            if do_graph is None:
+                raise ValueError(f"Node {n} not found in submodels with keys: {self._ctf_graphs.keys()}.")
+            
+            x = do_graph.get_nodes(list(interventions))
+            
+            par = do_graph.get_parents(n, include_self=True) - x
+            
+            for p in par:
+                
+                z = [val.main for val in (x & do_graph.get_parents(p, include_self=True))]
+                
+                modified_p = p.remove_interventions([i for i in interventions if str(i) not in z])
+                
+                ctf_parents.add(modified_p)
+                
+        # Eagerly generate graphs for new counterfactuals
+        for n in ctf_parents:
+            if self._ctf_graphs.get(n,None) is None:
+                self.do(n.interventions)
+
+                
+        return SymbolContainer(ctf_parents)

@@ -3,46 +3,48 @@
 from typing import List, Dict, Set, Union
 import sympy as sp
 
+
+
 class SymbolContainer:
     """
     A container for managing a collection of sympy.Symbols with various operations.
 
     Attributes
     ----------
-    symbol_list : List[sp.Symbol]
+    symbol_list : List['Variable']
         A list of sympy.Symbols stored in the container.
-    symbol_dict : Dict[str, sp.Symbol]
+    symbol_dict : Dict[str, 'Variable']
         A dictionary mapping string representations of symbols to their corresponding sympy.Symbols.
-    symbol_set : Set[sp.Symbol]
+    symbol_set : Set['Variable']
         A set of sympy.Symbols stored in the container for efficient set operations.
 
     Methods
     -------
     __len__() -> int
         Returns the number of symbols in the container.
-    __getitem__(key) -> Union[sp.Symbol, List[sp.Symbol]]
+    __getitem__(key) -> Union['Variable', List['Variable']]
         Retrieves a symbol or a list of symbols by index or name.
-    __getattr__(key) -> sp.Symbol
+    __getattr__(key) -> 'Variable'
         Access a symbol by its string name.
     __repr__() -> str
         Returns a string representation of the container's symbol list.
     __iter__() -> iter
         Returns an iterator over the symbol list.
-    __add__(other) -> Union[List[sp.Symbol], Set[sp.Symbol]]
+    __add__(other) -> Union[List['Variable'], Set['Variable']]
         Adds symbols from another container, list, or set.
-    __radd__(other) -> Union[List[sp.Symbol], Set[sp.Symbol]]
+    __radd__(other) -> Union[List['Variable'], Set['Variable']]
         Reverse add operation for lists, sets, or containers.
-    __sub__(other) -> Set[sp.Symbol]
+    __sub__(other) -> Set['Variable']
         Subtracts symbols from another container, list, or set.
-    __rsub__(other) -> Set[sp.Symbol]
+    __rsub__(other) -> Set['Variable']
         Reverse subtraction operation.
-    __and__(other) -> Set[sp.Symbol]
+    __and__(other) -> Set['Variable']
         Computes the intersection with another container, list, or set.
-    __rand__(other) -> Set[sp.Symbol]
+    __rand__(other) -> Set['Variable']
         Reverse intersection operation for containers and sets.
-    __or__(other) -> Set[sp.Symbol]
+    __or__(other) -> Set['Variable']
         Computes the union with another container, list, or set.
-    __ror__(other) -> Set[sp.Symbol]
+    __ror__(other) -> Set['Variable']
         Reverse union operation for containers and sets.
     __eq__(other) -> bool
         Checks equality with another container, list, or set.
@@ -54,25 +56,34 @@ class SymbolContainer:
         Returns the hash of the container (based on its symbols).
     """
 
-    def __init__(self, symbols: List[sp.Symbol] = None, syn: Dict[sp.Symbol, sp.Symbol] = None):
+    def __init__(self, symbols: List['Variable'] = None):
         """
         Initializes the SymbolContainer with a list of symbols and an optional dictionary of synonym mappings.
         
         Parameters
         ----------
-        symbols : List[sp.Symbol], optional
+        symbols : List['Variable'], optional
             A list of sympy.Symbols to initialize the container (default is an empty list).
-        syn : Dict[sp.Symbol, sp.Symbol], optional
-            A dictionary mapping symbols to their synonyms (default is an empty dictionary).
         """
+        
         if symbols is None:
             symbols = []
-        if syn is None:
-            syn = {}
         
         self.symbol_list = list(symbols)
-        self.symbol_dict = {str(s): s for s in symbols} | {str(k): v for k, v in syn.items()}
+        self.symbol_dict = {}
+        for symbol in symbols:
+            if self.symbol_dict.get(symbol.main) is None:
+                self.symbol_dict[symbol.main] = symbol
+            elif isinstance(self.symbol_dict[symbol.main], list):
+                self.symbol_dict[symbol.main].append(symbol)
+            else:
+                self.symbol_dict[symbol.main] = [self.symbol_dict[symbol.main], symbol]
+            
         self.symbol_set = set(self.symbol_list)
+        
+        for k,v in self.symbol_dict.items():
+            if isinstance(v, list):
+                self.symbol_dict[k] = sorted(v, key=lambda s: (len(s.interventions),s.name))
 
     def __len__(self) -> int:
         """
@@ -85,7 +96,7 @@ class SymbolContainer:
         """
         return len(self.symbol_list)
     
-    def __getitem__(self, key: Union[int, str, List[Union[int, str]]]) -> Union[sp.Symbol, List[sp.Symbol]]:
+    def __getitem__(self, key: Union[int, str, List[Union[int, str]]]) -> Union['Variable', List['Variable']]:
         """
         Retrieves a symbol or a list of symbols by index or name.
         
@@ -96,7 +107,7 @@ class SymbolContainer:
 
         Returns
         -------
-        Union[sp.Symbol, List[sp.Symbol]]
+        Union['Variable', List['Variable']]
             A single symbol or a list of symbols from the container.
 
         Raises
@@ -118,7 +129,7 @@ class SymbolContainer:
             return [self.symbol_list[i] for i in range(start, stop, step)]
         raise KeyError("Key must be an integer or a string")
     
-    def __getattr__(self, key: str) -> sp.Symbol:
+    def __getattr__(self, key: str) -> 'Variable':
         """
         Access a symbol by its string name.
 
@@ -129,7 +140,7 @@ class SymbolContainer:
 
         Returns
         -------
-        sp.Symbol
+        'Variable'
             The symbol corresponding to the given name.
 
         Raises
@@ -163,18 +174,18 @@ class SymbolContainer:
         """
         return iter(self.symbol_list)
     
-    def __add__(self, other: Union[List[sp.Symbol], Set[sp.Symbol], 'SymbolContainer']) -> Union[List[sp.Symbol], Set[sp.Symbol]]:
+    def __add__(self, other: Union[List['Variable'], Set['Variable'], 'SymbolContainer']) -> Union[List['Variable'], Set['Variable']]:
         """
         Adds symbols from another container, list, or set.
 
         Parameters
         ----------
-        other : Union[List[sp.Symbol], Set[sp.Symbol], SymbolContainer]
+        other : Union[List['Variable'], Set['Variable'], SymbolContainer]
             The object to add to the container (can be a list, set, or another SymbolContainer).
 
         Returns
         -------
-        Union[List[sp.Symbol], Set[sp.Symbol]]
+        Union[List['Variable'], Set['Variable']]
             The resulting list or set after addition.
 
         Raises
@@ -191,18 +202,18 @@ class SymbolContainer:
             return self.symbol_list + other.symbol_list
         raise TypeError(f"Unsupported operand type(s) for +: 'SymbolContainer' and '{type(other)}'")
     
-    def __radd__(self, other: Union[List[sp.Symbol], Set[sp.Symbol], 'SymbolContainer']) -> Union[List[sp.Symbol], Set[sp.Symbol]]:
+    def __radd__(self, other: Union[List['Variable'], Set['Variable'], 'SymbolContainer']) -> Union[List['Variable'], Set['Variable']]:
         """
         Reverse addition: reverse the order of the operands for addition.
 
         Parameters
         ----------
-        other : Union[List[sp.Symbol], Set[sp.Symbol], SymbolContainer]
+        other : Union[List['Variable'], Set['Variable'], SymbolContainer]
             The object to add to the container (can be a list, set, or another SymbolContainer).
 
         Returns
         -------
-        Union[List[sp.Symbol], Set[sp.Symbol]]
+        Union[List['Variable'], Set['Variable']]
             The resulting list or set after addition.
         """
         if isinstance(other, list):
@@ -213,18 +224,18 @@ class SymbolContainer:
             return other.symbol_list + self.symbol_list
         raise TypeError(f"Unsupported operand type(s) for +: '{type(other)}' and 'SymbolContainer'")
 
-    def __sub__(self, other: Union[List[sp.Symbol], Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __sub__(self, other: Union[List['Variable'], Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Subtracts symbols from another container, list, or set.
 
         Parameters
         ----------
-        other : Union[List[sp.Symbol], Set[sp.Symbol], SymbolContainer]
+        other : Union[List['Variable'], Set['Variable'], SymbolContainer]
             The object to subtract from the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after subtraction.
 
         Raises
@@ -240,18 +251,18 @@ class SymbolContainer:
             return self.symbol_set - other.symbol_set
         raise TypeError(f"Unsupported operand type(s) for -: 'SymbolContainer' and '{type(other)}'")
 
-    def __rsub__(self, other: Union[List[sp.Symbol], Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __rsub__(self, other: Union[List['Variable'], Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Reverse subtraction: subtracts the container's symbols from the other.
 
         Parameters
         ----------
-        other : Union[List[sp.Symbol], Set[sp.Symbol], SymbolContainer]
+        other : Union[List['Variable'], Set['Variable'], SymbolContainer]
             The object to subtract from the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after subtraction.
         """
         if isinstance(other, list):
@@ -262,18 +273,18 @@ class SymbolContainer:
             return other.symbol_set - self.symbol_set
         raise TypeError(f"Unsupported operand type(s) for -: '{type(other)}' and 'SymbolContainer'")
     
-    def __and__(self, other: Union[Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __and__(self, other: Union[Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Computes the intersection with another container, list, or set.
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], SymbolContainer]
             The object to intersect with the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after intersection.
 
         Raises
@@ -287,18 +298,18 @@ class SymbolContainer:
             return self.symbol_set & other.symbol_set
         raise TypeError(f"Unsupported operand type(s) for &: 'SymbolContainer' and '{type(other)}'")
 
-    def __rand__(self, other: Union[Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __rand__(self, other: Union[Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Reverse intersection: ensures the left-hand (other) value is handled correctly.
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], SymbolContainer]
             The object to intersect with the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after reverse intersection.
         """
         if isinstance(other, set):
@@ -307,18 +318,18 @@ class SymbolContainer:
             return other.symbol_set & self.symbol_set
         raise TypeError(f"Unsupported operand type(s) for &: '{type(other)}' and 'SymbolContainer'")
     
-    def __or__(self, other: Union[Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __or__(self, other: Union[Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Computes the union with another container, list, or set.
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], SymbolContainer]
             The object to union with the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after union.
 
         Raises
@@ -332,18 +343,18 @@ class SymbolContainer:
             return self.symbol_set | other.symbol_set
         raise TypeError(f"Unsupported operand type(s) for |: 'SymbolContainer' and '{type(other)}'")
     
-    def __ror__(self, other: Union[Set[sp.Symbol], 'SymbolContainer']) -> Set[sp.Symbol]:
+    def __ror__(self, other: Union[Set['Variable'], 'SymbolContainer']) -> Set['Variable']:
         """
         Reverse union: when SymbolContainer is on the right.
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], SymbolContainer]
             The object to union with the container.
 
         Returns
         -------
-        Set[sp.Symbol]
+        Set['Variable']
             The resulting set after reverse union.
         """
         if isinstance(other, set):
@@ -352,13 +363,13 @@ class SymbolContainer:
             return other.symbol_set | self.symbol_set
         raise TypeError(f"Unsupported operand type(s) for |: '{type(other)}' and 'SymbolContainer'")
 
-    def __eq__(self, other: Union[Set[sp.Symbol], List[sp.Symbol], 'SymbolContainer']) -> bool:
+    def __eq__(self, other: Union[Set['Variable'], List['Variable'], 'SymbolContainer']) -> bool:
         """
         Checks equality with another container, list, or set.
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], List[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], List['Variable'], SymbolContainer]
             The object to compare for equality.
 
         Returns
@@ -374,13 +385,13 @@ class SymbolContainer:
             return self.symbol_set == other.symbol_set
         return False
 
-    def __req__(self, other: Union[Set[sp.Symbol], List[sp.Symbol], 'SymbolContainer']) -> bool:
+    def __req__(self, other: Union[Set['Variable'], List['Variable'], 'SymbolContainer']) -> bool:
         """
         Reverse equality check (symmetric equality).
 
         Parameters
         ----------
-        other : Union[Set[sp.Symbol], List[sp.Symbol], SymbolContainer]
+        other : Union[Set['Variable'], List['Variable'], SymbolContainer]
             The object to compare for equality.
 
         Returns
@@ -390,13 +401,13 @@ class SymbolContainer:
         """
         return self.__eq__(other)
     
-    def __contains__(self, item: sp.Symbol) -> bool:
+    def __contains__(self, item: 'Variable') -> bool:
         """
         Checks if a symbol is contained in the container.
 
         Parameters
         ----------
-        item : sp.Symbol
+        item : 'Variable'
             The symbol to check for containment.
 
         Returns

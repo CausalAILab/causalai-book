@@ -9,10 +9,13 @@ import pandas as pd
 import sympy as sp
 from IPython.display import Latex
 
-from src import Pr
+from src.sympy_classes.pr import Pr
 from src.return_classes import SymbolContainer
 
 from src import CausalGraph
+
+from src.sympy_classes.summation import Summation
+from src.sympy_classes.variable import Variable
 
 
 
@@ -21,9 +24,8 @@ class SymbolicSCM:
 
     def __init__(
         self,
-        f: Dict[sp.Symbol, sp.Expr],
-        pu: Dict[sp.Symbol, List],
-        syn: Dict[sp.Symbol, sp.Symbol] = {},
+        f: Dict[Variable, sp.Expr],
+        pu: Dict[Variable, List],
         precision: int = 4,
     ):
         """
@@ -31,17 +33,14 @@ class SymbolicSCM:
 
         Parameters:
         -----------
-        f : Dict[sp.Symbol, sp.Expr]
+        f : Dict[Variable, sp.Expr]
             A dictionary mapping endogenous variables (as sympy Symbols) to
             their structural equations (as sympy Expressions).
-        pu : Dict[sp.Symbol, List]
+        pu : Dict[Variable, List]
             A dictionary mapping exogenous variables (as sympy Symbols) to
             their probability distributions. Each distribution can be a list
             of probabilities summing to 1 for Categorical variables or a
             single float for Bernoulli variables.
-        syn : Dict[sp.Symbol, sp.Symbol], optional
-            A dictionary mapping endogenous variables to their synonymous
-            variables. Defaults to an empty dictionary.
         precision : int, optional
             The precision for displaying numerical results. Defaults to 4.
 
@@ -58,29 +57,29 @@ class SymbolicSCM:
 
         Attributes:
         -----------
-        v : List[sp.Symbol]
+        v : List[Variable]
             List of endogenous variables.
-        u : List[sp.Symbol]
+        u : List[Variable]
             List of exogenous variables.
-        f : Dict[sp.Symbol, sp.Expr]
+        f : Dict[Variable, sp.Expr]
             Dictionary of structural equations. Must be loaded sequentially by dependency.
-        pu_domains : Dict[sp.Symbol, List]
+        pu_domains : Dict[Variable, List]
             Dictionary mapping exogenous variables to their domains.
-        pu : Dict[sp.Symbol, List]
+        pu : Dict[Variable, List]
             Dictionary of probability distributions for exogenous variables.
-        syn : Dict[sp.Symbol, sp.Symbol]
+        syn : Dict[Variable, Variable]
             A dictionary mapping endogenous variables to their affected variants. Defaults to an empty dictionary.
         precision : int
             Precision for displaying numerical results.
-        _counterfactuals : Dict[sp.Symbol, object]
+        _counterfactuals : Dict[Variable, object]
             Dictionary for storing a lookup to counterfactual SCMs.
         _intervention_memo : Dict[int, object]
             Memoization dictionary for storing interventions.
-        _distributions : Dict[sp.Symbol, pd.DataFrame]
+        _distributions : Dict[Variable, pd.DataFrame]
             Dictionary for storing calculated probability distributions.
         """
-        assert all(isinstance(k, sp.Symbol) for k in f), f
-        assert all(isinstance(k, sp.Symbol) for k in pu), pu
+        assert all(isinstance(k, Variable) for k in f), f
+        assert all(isinstance(k, Variable) for k in pu), pu
         assert all(
             (
                 isinstance(v, list)
@@ -91,12 +90,19 @@ class SymbolicSCM:
             or (isinstance(v, float) and 0 <= v <= 1)
             for v in pu.values()
         ), pu
-        assert all(isinstance(k, sp.Symbol) for k in syn), syn
-        assert all(isinstance(syn[k], sp.Symbol) for k in syn), syn
 
 
 
         self.f = {k: sp.sympify(v) for k, v in f.items()}
+        
+        # Potential values taken on for the endogenous variables
+        # Currently limited to binary variables
+        self.v_domains = {
+            k: (
+                [0, 1]
+            )
+            for k, v in f.items()
+        }
 
         self.pu_domains = {
             k: (
@@ -108,32 +114,33 @@ class SymbolicSCM:
         }
         self.pu = {k: v if isinstance(v, list) else [1 - v, v] for k, v in pu.items()}
 
-        self.syn = dict(syn)
-        self.v = SymbolContainer(list(f), self.syn)
-        self.u = SymbolContainer(list(pu), self.syn)
+        self.v = SymbolContainer(list(f))
+        self.u = SymbolContainer(list(pu))
+        
+        self.syn = {Variable(n.main): n for n in self.v}
 
         # display precision
         self.precision = precision
         self._intervention_memo: Dict[int, SymbolicSCM] = {}
-        self._counterfactuals: Dict[sp.Symbol, SymbolicSCM] = {k: self for k in self.v}
+        self._counterfactuals: Dict[Variable, SymbolicSCM] = {k: self for k in self.v}
 
-        self._distributions: Dict[sp.Symbol, pd.DataFrame] = {}
+        self._distributions: Dict[Variable, pd.DataFrame] = {}
 
         self.graph = CausalGraph.from_scm(self)
 
-    def _evaluate(self, u: Dict[sp.Symbol, int]) -> Dict[sp.Symbol, int]:
+    def _evaluate(self, u: Dict[Variable, int]) -> Dict[Variable, int]:
         """
         Evaluate the structural causal model (SCM) given the exogenous variables.
 
         Parameters
         ----------
-        u : Dict[sp.Symbol, int]
+        u : Dict[Variable, int]
             A dictionary where keys are sympy.Symbol instances representing
             exogenous variables and values are integers representing their
             corresponding values.
         Returns
         -------
-        Dict[sp.Symbol, int]
+        Dict[Variable, int]
             A dictionary where keys are sympy.Symbol instances representing
             both exogenous and endogenous variables, and values are their
             evaluated values based on the SCM.
@@ -145,7 +152,7 @@ class SymbolicSCM:
             If the keys of `u` do not match the set of exogenous variables `self.pu`.
         """
 
-        assert {isinstance(k, sp.Symbol) for k in u}, u
+        assert {isinstance(k, Variable) for k in u}, u
         assert {isinstance(v, int) for v in u.values()}, u
         assert set(u) == set(self.pu), (u, self.pu)
 
@@ -154,7 +161,7 @@ class SymbolicSCM:
             v[k] = self.f[k].subs(v)
         return v
     
-    def _evaluate_symbolic_expression(self, expression: sp.Expr, u:Dict[sp.Symbol,int]) -> int:
+    def _evaluate_symbolic_expression(self, expression: sp.Expr, u:Dict[Variable,int]) -> int:
         """
         Evaluate the symbolic expression through atoms deconstruction and value substitution.
 
@@ -162,7 +169,7 @@ class SymbolicSCM:
         ----------
         expression : sp.Expr
             A sympy expression representing the symbolic expression.
-        u : Dict[sp.Symbol, int]
+        u : Dict[Variable, int]
             A dictionary of exogenous variables and their corresponding settings.
         Returns
         -------
@@ -173,7 +180,7 @@ class SymbolicSCM:
         output = expression
         dist = None
 
-        syms = expression.atoms(sp.Symbol)
+        syms = expression.atoms(Variable)
 
         for s in syms:
             if self._distributions.get(s) is None:
@@ -192,7 +199,7 @@ class SymbolicSCM:
     
 
     def get_probability_table(
-        self, symbols: Optional[List[sp.Symbol]] = None, include_u: bool = False
+        self, symbols: Optional[List[Variable]] = None, include_u: bool = False
     ) -> pd.DataFrame:
         """
         Generate a probability table for the given symbols.
@@ -300,39 +307,76 @@ class SymbolicSCM:
 
         """
         
-        output = expr
+        assert isinstance(expr,sp.Basic), "Did you mean to use query()?"
+        
+        result = expr
+
+            
+        for s in result.atoms(Summation):
+            symbols = s.symbols
+            intrinsic_domains = s.domains
+
+            grids = [list(self.v_domains[self.syn[sym]]) if intrinsic_domains[sym] is sp.S.UniversalSet
+                     else intrinsic_domains[sym] for sym in symbols]
+
+            total = 0.0
+            for vals in itertools.product(*grids):
+                sub_map = dict(zip(symbols, vals))
+                sub_expr = s.expr
+                
+
+                for pr in sub_expr.atoms(Pr):
+                    
+                    mapped_pr = pr.apply_value_map(sub_map)
+                    
+                    scm = self
+                    if mapped_pr.get_action():
+                        scm = self.do(mapped_pr.get_action())
+                    sub_expr = sub_expr.subs(pr, scm.query(mapped_pr.get_event(), mapped_pr.get_condition()))
+
+                total += float(sub_expr)
+                
+            result = result.xreplace({s: total})
+            
+
+        if isinstance(result, sp.Basic):
+            for pr in result.atoms(Pr):
+                scm = self.do(pr.get_action()) if pr.get_action() else self
+                result = result.xreplace({pr: scm.query(pr.get_event(), pr.get_condition())})
+                
+                
+        if expr.is_Relational:
+            result = bool(result)
+        else:
+            result =  float(result)
 
 
-        inequality_expr = None
-        for atom in expr.atoms(sp.Rel):
-            if atom.is_Relational:  # This checks for relational (inequality) expressions
-                inequality_expr = True
-                break
+        if not latex:
+            return result
+            
 
-        for pr in expr.atoms(Pr):
-            if isinstance(pr.get_event(), dict):
-                if pr.get_action():
-                    self.do(pr.get_action())
+            
+            
+        pr_syms = [p for p in expr.atoms(sp.Symbol) if isinstance(p, Pr)]
+        symbol_names = {p.get_id(): p._latex() for p in pr_syms}
 
-                output = output.subs(pr, self.query(pr.get_event(), pr.get_condition()))
+        if expr.is_Relational:
+            return Latex(
+                f"$({sp.latex(expr, symbol_names=symbol_names)})"
+                f" = \\text{{{result}}}$"
+            )
 
+        return Latex(
+            f"${sp.latex(expr, symbol_names=symbol_names)}"
+            f" \\approx {result:.{self.precision}g}$"
+        )
 
-        if latex:
-            pr_syms = [p for p in expr.atoms(sp.Symbol) if isinstance(p, Pr)]
-            symbol_names = {p.get_id(): p._latex() for p in pr_syms}
-
-            if inequality_expr:
-                return Latex(f"$({sp.latex(expr, symbol_names=symbol_names,order=None)}) = \\text{{{output}}}$")
-
-            return Latex(f"${sp.latex(expr, symbol_names=symbol_names, order=None)} \\approx {float(output):.{self.precision}g}$")
-
-        return float(output)
 
 
     def query(
         self,
-        x: Dict[sp.Symbol, int],
-        given: Dict[sp.Symbol, int] = None,
+        x: Dict[Variable, int],
+        given: Dict[Variable, int] = None,
         latex: bool = False,
     ) -> Union[float, Latex]:
         """
@@ -340,10 +384,10 @@ class SymbolicSCM:
 
         Parameters
         ----------
-        x : Dict[sp.Symbol, int]
+        x : Dict[Variable, int]
             A dictionary where keys are sympy.Symbol instances representing
             variables of interest and values are their corresponding values.
-        given : Dict[sp.Symbol, int], optional
+        given : Dict[Variable, int], optional
             A dictionary where keys are sympy.Symbol instances representing
             conditioning variables and values are their corresponding values.
             Defaults to an empty dictionary.
@@ -374,7 +418,6 @@ class SymbolicSCM:
         
         assert all(k in self.syn or k in self._counterfactuals for k in x), (
             x,
-            self.syn,
             self._counterfactuals,
         )
 
@@ -399,7 +442,7 @@ class SymbolicSCM:
         query = " and ".join(f"`{str(k)}` == {str(x[k])}" for k in x)
         return pt.query(query).probability.sum()
 
-    def do(self, x: Dict[sp.Symbol, Union[sp.Expr, int, sp.Symbol]]) -> SymbolicSCM:
+    def do(self, x: Dict[Variable, Union[sp.Expr, int, Variable]]) -> SymbolicSCM:
         
         # TODO: Revise to update _interventions with more accessible structure of interventions for causal graph
         
@@ -410,7 +453,7 @@ class SymbolicSCM:
         parent variables in the causal graph.
         Parameters
         ----------
-        x : Dict[sp.Symbol, Union[sp.Expr, int, sp.Symbol]]
+        x : Dict[Variable, Union[sp.Expr, int, Variable]]
             A dictionary where keys are the variables to intervene on, and values are
             the fixed values for these variables.
         Returns
@@ -431,12 +474,11 @@ class SymbolicSCM:
 
         assert all(k in self.v for k in x), x
 
-        assert all(isinstance(val, int) or isinstance(val, sp.Symbol) or isinstance(val, sp.Basic)
+        assert all(isinstance(val, int) or isinstance(val, Variable) or isinstance(val, sp.Basic)
                     for k, val in x.items()), x
 
 
-        subscript = ",".join(f"{k}={x[k]}" for k in x)
-        vs = {k: sp.Symbol(f"{{{k}}}_{{{subscript}}}") for k in self.v}
+        vs = {k: k.update_interventions(x) for k in self.v}
 
         self._intervention_memo[key] = scm = SymbolicSCM(
             f={
@@ -444,7 +486,6 @@ class SymbolicSCM:
                 for k, v in self.f.items()
             },
             pu=self.pu,
-            syn={**self.syn, **vs},
         )
 
         ctfs = {k: scm for k in scm.v}
@@ -452,7 +493,11 @@ class SymbolicSCM:
             ctfs,
             self._counterfactuals,
         )
+        
+
+        
         self._counterfactuals.update(ctfs)
+        scm._counterfactuals = self._counterfactuals
 
         return scm
 
