@@ -444,8 +444,6 @@ class SymbolicSCM:
 
     def do(self, x: Dict[Variable, Union[sp.Expr, int, Variable]]) -> SymbolicSCM:
         
-        # TODO: Revise to update _interventions with more accessible structure of interventions for causal graph
-        
         """
         Perform the do-operation on the structural causal model (SCM).
         The do-operation simulates an intervention where the values of certain variables

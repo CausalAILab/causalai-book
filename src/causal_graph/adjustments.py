@@ -16,6 +16,10 @@ import src.causal_graph.utils as utils
 from IPython.display import Latex
 
 
+# TODO: Return latex results as a new class Latexpr class that allows for
+# standard sympy methods (e.g., .subs() and .atoms()) to be called on it
+# to access the underlying Pr() objects
+
 
 class Adjustments(ABC):
 

@@ -14,10 +14,6 @@ from src.global_utils import format_set, build_prob_exp
 
 
 
-# TODO: Find way to return Latex-rich objects in other package methods
-# that contain .subs() and .atoms() and other methods for accessing Pr() instances
-# Issue: Many objects returned are not context rich enough to be evaluated
-
 
 class Pr(Symbol):
     """
