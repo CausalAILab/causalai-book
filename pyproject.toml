@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling>=1.24", "hatch-vcs>=0.4"]   # PEP 517 backend + VCS-based versioning
+build-backend = "hatchling.build"
+
+######################
+#  Project metadata  #
+######################
+[project]
+name            = "citk"               # pip install citk
+dynamic         = ["version"]          # pulled from your git tag via hatch-vcs
+description     = "Causal Inference Toolkit — A Python Native Library for Building Causally Intelligent Systems"
+readme          = "README.md"
+license         = {text = "MIT"}
+authors         = [{name = "Ryan Sherby", email = "ryan.sherby@columbia.edu"}]
+maintainers     = [{name = "Ryan Sherby", email = "ryan.sherby@columbia.edu"}]
+requires-python = ">=3.9"
+
+keywords = [
+  "causal-inference",
+  "structural-causal-models",
+  "do-calculus",
+  "counterfactuals",
+  "machine-learning",
+  "causal-identification",
+  "causal-analysis",
+]
+
+# Core runtime dependencies
+dependencies = [
+  "sympy>=1.13",
+  "networkx>=3.4.2",
+  "pandas>=2.2",
+  "numpy>=1.26",
+  "graphviz>=0.20.3"
+]
+
+##########################
+# Optional run-time deps #
+##########################
+[project.optional-dependencies]
+viz    = []
+torch  = []
+dev    = []     # easy umbrella install
+docs   = []
+test   = []
+quality = [
+]
+
+
+
+#############
+# Project URLs
+#############
+[project.urls]
+Homepage      = "https://github.com/CausalAILab/causalai-book/tree/main"
+Documentation = ""
+Issues        = "https://github.com/CausalAILab/causalai-book/issues"
+Changelog     = ""
+
+#######################
+# Hatch build settings
+#######################
+[tool.hatch.version]
+source = "vcs"                         # use git tag e.g. v0.3.2
+
+[tool.hatch.build]
+# put wheels / sdists in the usual ./dist folder (default)
+include = [
+  "src/citk/**",
+  "LICENSE",
+  "README.md",
+]
+
+[tool.hatch.build.targets.sdist]
+# include pyproject & docs for source dist
+# include = ["/docs", "/tests"]
